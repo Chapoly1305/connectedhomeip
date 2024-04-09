@@ -10,6 +10,7 @@
 # --network=bridge
 # https://docs.docker.com/network/drivers/bridge/
 
+
 # Remove containers after finishing a job, comment out for debugging
 --rm
 
