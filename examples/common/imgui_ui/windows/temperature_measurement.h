@@ -34,7 +34,7 @@ namespace Windows {
 class TemperatureMeasurement : public Window
 {
 public:
-    TemperatureMeasurement(chip::EndpointId endpointId) : mEndpointId(endpointId), mTitle("Temperature Measurement") {}
+    TemperatureMeasurement(chip::EndpointId endpointId, const char * title) : mEndpointId(endpointId), mTitle(title) {}
     void UpdateState() override;
     void Render() override;
 
