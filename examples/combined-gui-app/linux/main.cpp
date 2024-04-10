@@ -35,6 +35,8 @@
 #include <imgui_ui/windows/occupancy_sensing.h>
 #include <imgui_ui/windows/qrcode.h>
 #include <imgui_ui/windows/light.h>
+#include <imgui_ui/windows/window_covering.h>
+
 #endif
 
 using namespace chip;
@@ -114,6 +116,7 @@ int main(int argc, char * argv[])
         ui.AddWindow(std::make_unique<example::Ui::Windows::BooleanState>(chip::EndpointId(1), "Contact Sensor"));
         ui.AddWindow(std::make_unique<example::Ui::Windows::OccupancySensing>(chip::EndpointId(1), "Occupancy"));
         ui.AddWindow(std::make_unique<example::Ui::Windows::TemperatureMeasurement>(chip::EndpointId(1), "Temperature"));
+        ui.AddWindow(std::make_unique<example::Ui::Windows::WindowCovering>(chip::EndpointId(1), "WindowCovering"));
         ui.AddWindow(std::make_unique<example::Ui::Windows::Light>(chip::EndpointId(1)));
 
         ChipLinuxAppMainLoop(&ui);
