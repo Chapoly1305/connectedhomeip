@@ -57,6 +57,8 @@ executable("combined-gui-app") {
       "${chip_root}/examples/common/imgui_ui/windows:occupancy_sensing",
       "${chip_root}/examples/common/imgui_ui/windows:light",
       "${chip_root}/examples/common/imgui_ui/windows:window_covering",
+      "${chip_root}/examples/common/imgui_ui/windows:door_lock",
+
       "${chip_root}/examples/common/imgui_ui/windows:qrcode",
     ]
   }

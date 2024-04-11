@@ -116,3 +116,17 @@ static_library("window_covering") {
 
   public_configs = [ "${chip_root}/src:includes" ]
 }
+static_library("door_lock") {
+  sources = [
+    "door_lock.cpp",
+    "door_lock.h",
+  ]
+
+  deps = [
+    ":windows",
+    "${chip_root}/src/app/common:cluster-objects",
+    "${chip_root}/third_party/imgui",
+  ]
+
+  public_configs = [ "${chip_root}/src:includes" ]
+}

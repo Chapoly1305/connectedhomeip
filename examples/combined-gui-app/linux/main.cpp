@@ -36,7 +36,7 @@
 #include <imgui_ui/windows/qrcode.h>
 #include <imgui_ui/windows/light.h>
 #include <imgui_ui/windows/window_covering.h>
-
+#include <imgui_ui/windows/door_lock.h>
 #endif
 
 using namespace chip;
@@ -113,11 +113,14 @@ int main(int argc, char * argv[])
         example::Ui::ImguiUi ui;
 
         ui.AddWindow(std::make_unique<example::Ui::Windows::QRCode>());
-        ui.AddWindow(std::make_unique<example::Ui::Windows::BooleanState>(chip::EndpointId(1), "Contact Sensor"));
         ui.AddWindow(std::make_unique<example::Ui::Windows::OccupancySensing>(chip::EndpointId(1), "Occupancy"));
-        ui.AddWindow(std::make_unique<example::Ui::Windows::TemperatureMeasurement>(chip::EndpointId(1), "Temperature"));
-        ui.AddWindow(std::make_unique<example::Ui::Windows::WindowCovering>(chip::EndpointId(1), "WindowCovering"));
-        ui.AddWindow(std::make_unique<example::Ui::Windows::Light>(chip::EndpointId(1)));
+        ui.AddWindow(std::make_unique<example::Ui::Windows::Light>(chip::EndpointId(2)));
+        ui.AddWindow(std::make_unique<example::Ui::Windows::WindowCovering>(chip::EndpointId(3), "WindowCovering"));
+        ui.AddWindow(std::make_unique<example::Ui::Windows::BooleanState>(chip::EndpointId(4), "Contact Sensor"));
+        ui.AddWindow(std::make_unique<example::Ui::Windows::TemperatureMeasurement>(chip::EndpointId(5), "Temperature"));
+        ui.AddWindow(std::make_unique<example::Ui::Windows::DoorLock>(chip::EndpointId(6), "DoorLock"));
+
+
 
         ChipLinuxAppMainLoop(&ui);
     #else
