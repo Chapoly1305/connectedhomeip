@@ -37,6 +37,8 @@ config("includes") {
 executable("combined-gui-app") {
   sources = [
     "LightingAppCommandDelegate.cpp",
+    "WindowCoveringManager.cpp",
+    "WindowCoveringManager.h",
     "include/CHIPProjectAppConfig.h",
     "main.cpp",
   ]
@@ -52,14 +54,13 @@ executable("combined-gui-app") {
   if (chip_examples_enable_imgui_ui) {
     deps += [
       "${chip_root}/examples/common/imgui_ui",
-      "${chip_root}/examples/common/imgui_ui/windows:temperature_measurement",
       "${chip_root}/examples/common/imgui_ui/windows:boolean_state",
-      "${chip_root}/examples/common/imgui_ui/windows:occupancy_sensing",
-      "${chip_root}/examples/common/imgui_ui/windows:light",
-      "${chip_root}/examples/common/imgui_ui/windows:window_covering",
       "${chip_root}/examples/common/imgui_ui/windows:door_lock",
-
+      "${chip_root}/examples/common/imgui_ui/windows:light",
+      "${chip_root}/examples/common/imgui_ui/windows:occupancy_sensing",
       "${chip_root}/examples/common/imgui_ui/windows:qrcode",
+      "${chip_root}/examples/common/imgui_ui/windows:temperature_measurement",
+      "${chip_root}/examples/common/imgui_ui/windows:window_covering",
     ]
   }
 

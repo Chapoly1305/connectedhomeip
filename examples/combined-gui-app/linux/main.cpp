@@ -21,7 +21,7 @@
 #include <platform/CHIPDeviceConfig.h>
 #include "LightingAppCommandDelegate.h"
 #include "LightingManager.h"
-
+#include "WindowCoveringManager.h"
 #include <app-common/zap-generated/ids/Attributes.h>
 #include <app-common/zap-generated/ids/Clusters.h>
 #include <app/ConcreteAttributePath.h>
@@ -48,6 +48,8 @@ namespace {
 constexpr char kChipEventFifoPathPrefix[] = "/tmp/combine_fifo_";
 NamedPipeCommands sChipNamedPipeCommands;
 LightingAppCommandDelegate sLightingAppCommandDelegate;
+Clusters::WindowCovering::WindowCoveringManager sWindowCoveringManager;
+
 } // namespace
 
 void MatterPostAttributeChangeCallback(const chip::app::ConcreteAttributePath & attributePath, uint8_t type, uint16_t size,
@@ -59,24 +61,16 @@ void MatterPostAttributeChangeCallback(const chip::app::ConcreteAttributePath & 
     }
 }
 
-/** @brief OnOff Cluster Init
- *
- * This function is called when a specific cluster is initialized. It gives the
- * application an opportunity to take care of cluster initialization procedures.
- * It is called exactly once for each endpoint where cluster is present.
- *
- * @param endpoint   Ver.: always
- *
- * TODO Issue #3841
- * emberAfOnOffClusterInitCallback happens before the stack initialize the cluster
- * attributes to the default value.
- * The logic here expects something similar to the deprecated Plugins callback
- * emberAfPluginOnOffClusterServerPostInitCallback.
- *
- */
 void emberAfOnOffClusterInitCallback(EndpointId endpoint)
 {
     // TODO: implement any additional Cluster Server init actions
+}
+
+void emberAfWindowCoveringClusterInitCallback(chip::EndpointId endpoint)
+{
+    sWindowCoveringManager.Init(endpoint);
+    Clusters::WindowCovering::SetDefaultDelegate(endpoint, &sWindowCoveringManager);
+    Clusters::WindowCovering::ConfigStatusUpdateFeatures(endpoint);
 }
 
 void ApplicationInit()
