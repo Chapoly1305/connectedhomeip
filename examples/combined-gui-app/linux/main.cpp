@@ -113,8 +113,8 @@ int main(int argc, char * argv[])
         example::Ui::ImguiUi ui;
 
         ui.AddWindow(std::make_unique<example::Ui::Windows::QRCode>());
-        ui.AddWindow(std::make_unique<example::Ui::Windows::OccupancySensing>(chip::EndpointId(1), "Occupancy"));
-        ui.AddWindow(std::make_unique<example::Ui::Windows::Light>(chip::EndpointId(2)));
+        ui.AddWindow(std::make_unique<example::Ui::Windows::OccupancySensing>(chip::EndpointId(2), "Occupancy"));
+        ui.AddWindow(std::make_unique<example::Ui::Windows::Light>(chip::EndpointId(1)));
         ui.AddWindow(std::make_unique<example::Ui::Windows::WindowCovering>(chip::EndpointId(3), "WindowCovering"));
         ui.AddWindow(std::make_unique<example::Ui::Windows::BooleanState>(chip::EndpointId(4), "Contact Sensor"));
         ui.AddWindow(std::make_unique<example::Ui::Windows::TemperatureMeasurement>(chip::EndpointId(5), "Temperature"));
