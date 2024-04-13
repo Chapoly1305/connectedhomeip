@@ -36,9 +36,8 @@ config("includes") {
 
 executable("combined-gui-app") {
   sources = [
-    "LightingAppCommandDelegate.cpp",
-    "WindowCoveringManager.cpp",
-    "WindowCoveringManager.h",
+    "${chip_root}/examples/combined-gui-app/combined-common/src/CombinedAppCommandDelegate.cpp",
+    "${chip_root}/examples/combined-gui-app/combined-common/src/WindowCoveringManager.cpp",
     "include/CHIPProjectAppConfig.h",
     "main.cpp",
   ]

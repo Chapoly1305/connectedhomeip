@@ -19,7 +19,7 @@
 #include <AppMain.h>
 #include <app/util/af.h>
 #include <platform/CHIPDeviceConfig.h>
-#include "LightingAppCommandDelegate.h"
+#include "CombinedAppCommandDelegate.h"
 #include "LightingManager.h"
 #include "WindowCoveringManager.h"
 #include <app-common/zap-generated/ids/Attributes.h>
@@ -45,9 +45,9 @@ using namespace chip::app::Clusters;
 
 namespace {
 
-constexpr char kChipEventFifoPathPrefix[] = "/tmp/combine_fifo_";
+constexpr char kChipEventFifoPathPrefix[] = "/tmp/combined-app_fifo_";
 NamedPipeCommands sChipNamedPipeCommands;
-LightingAppCommandDelegate sLightingAppCommandDelegate;
+CombinedAppCommandDelegate sCombinedAppCommandDelegate;
 Clusters::WindowCovering::WindowCoveringManager sWindowCoveringManager;
 
 } // namespace
@@ -77,7 +77,7 @@ void ApplicationInit()
 {
     std::string path = kChipEventFifoPathPrefix + std::to_string(getpid());
 
-    if (sChipNamedPipeCommands.Start(path, &sLightingAppCommandDelegate) != CHIP_NO_ERROR)
+    if (sChipNamedPipeCommands.Start(path, &sCombinedAppCommandDelegate) != CHIP_NO_ERROR)
     {
         ChipLogError(NotSpecified, "Failed to start CHIP NamedPipeCommands");
         sChipNamedPipeCommands.Stop();
@@ -102,6 +102,8 @@ int main(int argc, char * argv[])
         chip::DeviceLayer::PlatformMgr().Shutdown();
         return -1;
     }
+    
+
 
     #if defined(CHIP_IMGUI_ENABLED) && CHIP_IMGUI_ENABLED
         example::Ui::ImguiUi ui;

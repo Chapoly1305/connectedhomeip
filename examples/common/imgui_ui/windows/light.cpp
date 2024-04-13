@@ -181,7 +181,7 @@ void Light::Render()
     else if (mColorMode == kColorModeColorTemperature)
     {
         ImGui::Text("Color Temperature Mireds: %d", mColorTemperatureMireds);
-    }
+        }
     ImGui::Unindent();
 
     ImGui::End();

@@ -16,7 +16,7 @@
  *    limitations under the License.
  */
 
-#include "LightingAppCommandDelegate.h"
+#include "CombinedAppCommandDelegate.h"
 
 #include <app-common/zap-generated/attributes/Accessors.h>
 #include <app/clusters/general-diagnostics-server/general-diagnostics-server.h>
@@ -31,7 +31,7 @@ using namespace chip::app;
 using namespace chip::app::Clusters;
 using namespace chip::DeviceLayer;
 
-LightingAppCommandHandler * LightingAppCommandHandler::FromJSON(const char * json)
+CombinedAppCommandHandler * CombinedAppCommandHandler::FromJSON(const char * json)
 {
     Json::Reader reader;
     Json::Value value;
@@ -55,12 +55,12 @@ LightingAppCommandHandler * LightingAppCommandHandler::FromJSON(const char * jso
         return nullptr;
     }
 
-    return Platform::New<LightingAppCommandHandler>(std::move(value));
+    return Platform::New<CombinedAppCommandHandler>(std::move(value));
 }
 
-void LightingAppCommandHandler::HandleCommand(intptr_t context)
+void CombinedAppCommandHandler::HandleCommand(intptr_t context)
 {
-    auto * self      = reinterpret_cast<LightingAppCommandHandler *>(context);
+    auto * self      = reinterpret_cast<CombinedAppCommandHandler *>(context);
     std::string name = self->mJsonValue["Name"].asString();
 
     VerifyOrExit(!self->mJsonValue.empty(), ChipLogError(NotSpecified, "Invalid JSON event command received"));
@@ -151,14 +151,14 @@ exit:
     Platform::Delete(self);
 }
 
-bool LightingAppCommandHandler::IsClusterPresentOnAnyEndpoint(ClusterId clusterId)
+bool CombinedAppCommandHandler::IsClusterPresentOnAnyEndpoint(ClusterId clusterId)
 {
     EnabledEndpointsWithServerCluster enabledEndpoints(clusterId);
 
     return (enabledEndpoints.begin() != enabledEndpoints.end());
 }
 
-void LightingAppCommandHandler::OnRebootSignalHandler(BootReasonType bootReason)
+void CombinedAppCommandHandler::OnRebootSignalHandler(BootReasonType bootReason)
 {
     if (ConfigurationMgr().StoreBootReason(static_cast<uint32_t>(bootReason)) == CHIP_NO_ERROR)
     {
@@ -171,7 +171,7 @@ void LightingAppCommandHandler::OnRebootSignalHandler(BootReasonType bootReason)
     }
 }
 
-void LightingAppCommandHandler::OnGeneralFaultEventHandler(uint32_t eventId)
+void CombinedAppCommandHandler::OnGeneralFaultEventHandler(uint32_t eventId)
 {
     if (!IsClusterPresentOnAnyEndpoint(Clusters::GeneralDiagnostics::Id))
         return;
@@ -228,7 +228,7 @@ void LightingAppCommandHandler::OnGeneralFaultEventHandler(uint32_t eventId)
     }
 }
 
-void LightingAppCommandHandler::OnSoftwareFaultEventHandler(uint32_t eventId)
+void CombinedAppCommandHandler::OnSoftwareFaultEventHandler(uint32_t eventId)
 {
     VerifyOrReturn(eventId == Clusters::SoftwareDiagnostics::Events::SoftwareFault::Id,
                    ChipLogError(NotSpecified, "Unknown software fault event received"));
@@ -255,7 +255,7 @@ void LightingAppCommandHandler::OnSoftwareFaultEventHandler(uint32_t eventId)
     Clusters::SoftwareDiagnosticsServer::Instance().OnSoftwareFaultDetect(softwareFault);
 }
 
-void LightingAppCommandHandler::OnSwitchLatchedHandler(uint8_t newPosition)
+void CombinedAppCommandHandler::OnSwitchLatchedHandler(uint8_t newPosition)
 {
     EndpointId endpoint = 0;
 
@@ -267,7 +267,7 @@ void LightingAppCommandHandler::OnSwitchLatchedHandler(uint8_t newPosition)
     Clusters::SwitchServer::Instance().OnSwitchLatch(endpoint, newPosition);
 }
 
-void LightingAppCommandHandler::OnSwitchInitialPressedHandler(uint8_t newPosition)
+void CombinedAppCommandHandler::OnSwitchInitialPressedHandler(uint8_t newPosition)
 {
     EndpointId endpoint = 0;
 
@@ -279,7 +279,7 @@ void LightingAppCommandHandler::OnSwitchInitialPressedHandler(uint8_t newPositio
     Clusters::SwitchServer::Instance().OnInitialPress(endpoint, newPosition);
 }
 
-void LightingAppCommandHandler::OnSwitchLongPressedHandler(uint8_t newPosition)
+void CombinedAppCommandHandler::OnSwitchLongPressedHandler(uint8_t newPosition)
 {
     EndpointId endpoint = 0;
 
@@ -291,7 +291,7 @@ void LightingAppCommandHandler::OnSwitchLongPressedHandler(uint8_t newPosition)
     Clusters::SwitchServer::Instance().OnLongPress(endpoint, newPosition);
 }
 
-void LightingAppCommandHandler::OnSwitchShortReleasedHandler(uint8_t previousPosition)
+void CombinedAppCommandHandler::OnSwitchShortReleasedHandler(uint8_t previousPosition)
 {
     EndpointId endpoint = 0;
 
@@ -304,7 +304,7 @@ void LightingAppCommandHandler::OnSwitchShortReleasedHandler(uint8_t previousPos
     Clusters::SwitchServer::Instance().OnShortRelease(endpoint, previousPosition);
 }
 
-void LightingAppCommandHandler::OnSwitchLongReleasedHandler(uint8_t previousPosition)
+void CombinedAppCommandHandler::OnSwitchLongReleasedHandler(uint8_t previousPosition)
 {
     EndpointId endpoint = 0;
 
@@ -319,7 +319,7 @@ void LightingAppCommandHandler::OnSwitchLongReleasedHandler(uint8_t previousPosi
     Clusters::SwitchServer::Instance().OnLongRelease(endpoint, previousPosition);
 }
 
-void LightingAppCommandHandler::OnSwitchMultiPressOngoingHandler(uint8_t newPosition, uint8_t count)
+void CombinedAppCommandHandler::OnSwitchMultiPressOngoingHandler(uint8_t newPosition, uint8_t count)
 {
     EndpointId endpoint = 0;
 
@@ -333,7 +333,7 @@ void LightingAppCommandHandler::OnSwitchMultiPressOngoingHandler(uint8_t newPosi
     Clusters::SwitchServer::Instance().OnMultiPressOngoing(endpoint, newPosition, count);
 }
 
-void LightingAppCommandHandler::OnSwitchMultiPressCompleteHandler(uint8_t previousPosition, uint8_t count)
+void CombinedAppCommandHandler::OnSwitchMultiPressCompleteHandler(uint8_t previousPosition, uint8_t count)
 {
     EndpointId endpoint = 0;
 
@@ -347,14 +347,14 @@ void LightingAppCommandHandler::OnSwitchMultiPressCompleteHandler(uint8_t previo
     Clusters::SwitchServer::Instance().OnMultiPressComplete(endpoint, previousPosition, count);
 }
 
-void LightingAppCommandDelegate::OnEventCommandReceived(const char * json)
+void CombinedAppCommandDelegate::OnEventCommandReceived(const char * json)
 {
-    auto handler = LightingAppCommandHandler::FromJSON(json);
+    auto handler = CombinedAppCommandHandler::FromJSON(json);
     if (nullptr == handler)
     {
         ChipLogError(NotSpecified, "AllClusters App: Unable to instantiate a command handler");
         return;
     }
 
-    chip::DeviceLayer::PlatformMgr().ScheduleWork(LightingAppCommandHandler::HandleCommand, reinterpret_cast<intptr_t>(handler));
+    chip::DeviceLayer::PlatformMgr().ScheduleWork(CombinedAppCommandHandler::HandleCommand, reinterpret_cast<intptr_t>(handler));
 }

@@ -33,7 +33,7 @@ void TemperatureMeasurement::UpdateState()
 {
     if (mTargetLevel.HasValue())
     {
-        chip::app::Clusters::TemperatureMeasurement::Attributes::MeasuredValue::Set(mEndpointId, mTargetLevel.Value());
+        chip::app::Clusters::TemperatureMeasurement::Attributes::MeasuredValue::Set(mEndpointId, mTargetLevel.Value()*100);
         mTargetLevel.ClearValue();
     }
 
@@ -74,12 +74,12 @@ void TemperatureMeasurement::Render()
     }
     else
     {
-        static int temperature = static_cast<int>(mCurrentLevel.Value());
-        ImGui::SliderInt("Target Temperature", &temperature, static_cast<int>(mMinLevel.ValueOr(0)), static_cast<int>(mMaxLevel.ValueOr(0)));
+        static int temperature = static_cast<int>(mCurrentLevel.Value()/100);
+        ImGui::SliderInt("Target Temperature", &temperature, static_cast<int>(mMinLevel.ValueOr(-10000)/100), static_cast<int>(mMaxLevel.ValueOr(10000)/100));
 
         if (ImGui::Button("Set Temperature"))
         {
-            mTargetLevel.SetValue(static_cast<int16_t>(temperature));
+            mTargetLevel.SetValue(static_cast<int16_t>(temperature)*100);
         }
     }
 

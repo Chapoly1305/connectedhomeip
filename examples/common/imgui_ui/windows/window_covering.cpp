@@ -54,12 +54,12 @@ void WindowCovering::Render()
     }
     else
     {
-        static int liftValue = static_cast<int>(mCurrentLevel.Value());
-        ImGui::SliderInt("Target Value", &liftValue, static_cast<int>(0), static_cast<int>(1000));
+        static int liftValue = static_cast<int>(mCurrentLevel.Value()/100);
+        ImGui::SliderInt("Target Value", &liftValue, static_cast<int>(0), static_cast<int>(100));
 
         if (ImGui::Button("Set Value"))
         {
-            mTargetLevel.SetValue(static_cast<int16_t>(liftValue));
+            mTargetLevel.SetValue(static_cast<int16_t>(liftValue)*100);
         }
     }
 

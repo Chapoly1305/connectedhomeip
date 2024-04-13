@@ -23,14 +23,14 @@
 #include <json/json.h>
 #include <platform/DiagnosticDataProvider.h>
 
-class LightingAppCommandHandler
+class CombinedAppCommandHandler
 {
 public:
-    static LightingAppCommandHandler * FromJSON(const char * json);
+    static CombinedAppCommandHandler * FromJSON(const char * json);
 
     static void HandleCommand(intptr_t context);
 
-    LightingAppCommandHandler(Json::Value && jasonValue) : mJsonValue(std::move(jasonValue)) {}
+    CombinedAppCommandHandler(Json::Value && jasonValue) : mJsonValue(std::move(jasonValue)) {}
 
 private:
     Json::Value mJsonValue;
@@ -90,7 +90,7 @@ private:
     void OnSwitchMultiPressCompleteHandler(uint8_t previousPosition, uint8_t count);
 };
 
-class LightingAppCommandDelegate : public NamedPipeCommandDelegate
+class CombinedAppCommandDelegate : public NamedPipeCommandDelegate
 {
 public:
     void OnEventCommandReceived(const char * json) override;
