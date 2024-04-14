@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+import 'pw_protobuf_protos/common.proto';
+
+package chip.rpc;
+
+// This may eventually contain more attributes.
+message OccupancySensingState {
+  uint32 state_value = 1;
+}
+
+message OccupancySensingSetRequest {
+  uint32 endpoint_id = 1;
+  uint32 state_value = 2;
+}
+
+message OccupancySensingSetResponse {
+  uint64 event_number = 1;
+}
+
+message OccupancySensingGetRequest {
+  uint32 endpoint_id = 1;
+}
+
+message OccupancySensingGetResponse {
+  OccupancySensingState state = 1;
+}
+
+service OccupancySensing {
+  rpc Set(OccupancySensingSetRequest) returns (OccupancySensingSetResponse){}
+  rpc Get(OccupancySensingGetRequest) returns (OccupancySensingState){}
+}

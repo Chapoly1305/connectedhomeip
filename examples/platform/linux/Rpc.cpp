@@ -46,6 +46,10 @@
 #include "pigweed/rpc_services/Locking.h"
 #endif // defined(PW_RPC_LOCKING_SERVICE) && PW_RPC_LOCKING_SERVICE
 
+#if defined(PW_RPC_OCCUPANCY_SENSING_SERVICE) && PW_RPC_OCCUPANCY_SENSING_SERVICE
+#include "pigweed/rpc_services/OccupancySensing.h"
+#endif // defined(PW_RPC_OCCUPANCY_SENSING_SERVICE) && PW_RPC_OCCUPANCY_SENSING_SERVICE
+
 #if defined(PW_RPC_TRACING_SERVICE) && PW_RPC_TRACING_SERVICE
 #define PW_TRACE_BUFFER_SIZE_BYTES 1024
 #include "pw_trace/trace.h"
@@ -88,6 +92,14 @@ Device device_service;
 Lighting lighting_service;
 #endif // defined(PW_RPC_LIGHTING_SERVICE) && PW_RPC_LIGHTING_SERVICE
 
+#if defined(PW_RPC_LOCKING_SERVICE) && PW_RPC_LOCKING_SERVICE
+Locking Locking_service;
+#endif // defined(PW_RPC_LOCKING_SERVICE) && PW_RPC_LOCKING_SERVICE
+
+#if defined(PW_RPC_OCCUPANCY_SENSING_SERVICE) && PW_RPC_OCCUPANCY_SENSING_SERVICE
+OccupancySensing occupancy_sensing_service;
+#endif // defined(PW_RPC_OCCUPANCY_SENSING_SERVICE) && PW_RPC_OCCUPANCY_SENSING_SERVICE
+
 #if defined(PW_RPC_TRACING_SERVICE) && PW_RPC_TRACING_SERVICE
 pw::trace::TraceService trace_service(pw::trace::GetTokenizedTracer());
 #endif // defined(PW_RPC_TRACING_SERVICE) && PW_RPC_TRACING_SERVICE
@@ -101,6 +113,10 @@ void RegisterServices(pw::rpc::Server & server)
 #if defined(PW_RPC_BOOLEAN_STATE_SERVICE) && PW_RPC_BOOLEAN_STATE_SERVICE
     server.RegisterService(boolean_state_service);
 #endif // defined(PW_RPC_BOOLEAN_STATE_SERVICE) && PW_RPC_BOOLEAN_STATE_SERVICE
+
+#if defined(PW_RPC_OCCUPANCY_SENSING_SERVICE) && PW_RPC_OCCUPANCY_SENSING_SERVICE
+    server.RegisterService(occupancy_sensing_service);
+#endif // defined(PW_RPC_OCCUPANCY_SENSING_SERVICE) && PW_RPC_OCCUPANCY_SENSING_SERVICE
 
 #if defined(PW_RPC_DESCRIPTOR_SERVICE) && PW_RPC_DESCRIPTOR_SERVICE
     server.RegisterService(descriptor_service);

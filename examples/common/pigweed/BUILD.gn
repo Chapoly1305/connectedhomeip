@@ -86,6 +86,13 @@ pw_proto_library("locking_service") {
   prefix = "locking_service"
 }
 
+pw_proto_library("occupancy_sensing_service") {
+  sources = [ "protos/occupancy_sensing_service.proto" ]
+  deps = [ "$dir_pw_protobuf:common_protos" ]
+  strip_prefix = "protos"
+  prefix = "occupancy_sensing_service"
+}
+
 pw_proto_library("ot_cli_service") {
   sources = [ "protos/ot_cli_service.proto" ]
   inputs = [ "protos/ot_cli_service.options" ]

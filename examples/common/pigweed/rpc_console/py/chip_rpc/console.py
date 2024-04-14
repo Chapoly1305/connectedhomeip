@@ -57,6 +57,7 @@ from locking_service import locking_service_pb2
 from ot_cli_service import ot_cli_service_pb2
 from thread_service import thread_service_pb2
 from wifi_service import wifi_service_pb2
+from occupancy_sensing_service import occupancy_sensing_service_pb2
 
 
 def _parse_args():
@@ -130,6 +131,7 @@ def show_console(device: str, baudrate: int,
         compiled_protos=[
                 attributes_service_pb2,
                 boolean_state_service_pb2,
+                occupancy_sensing_service_pb2,
                 button_service_pb2,
                 descriptor_service_pb2,
                 device_service_pb2,
