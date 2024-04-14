@@ -58,6 +58,7 @@ from ot_cli_service import ot_cli_service_pb2
 from thread_service import thread_service_pb2
 from wifi_service import wifi_service_pb2
 from occupancy_sensing_service import occupancy_sensing_service_pb2
+from temperature_service import temperature_service_pb2
 
 
 def _parse_args():
@@ -140,6 +141,7 @@ def show_console(device: str, baudrate: int,
                 locking_service_pb2,
                 ot_cli_service_pb2,
                 thread_service_pb2,
+                temperature_service_pb2,
                 wifi_service_pb2]
     )
 

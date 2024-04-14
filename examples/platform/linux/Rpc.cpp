@@ -30,6 +30,10 @@
 #include "pigweed/rpc_services/BooleanState.h"
 #endif // defined(PW_RPC_BOOLEAN_STATE_SERVICE) && PW_RPC_BOOLEAN_STATE_SERVICE
 
+#if defined(PW_RPC_TEMPERATURE_SERVICE) && PW_RPC_TEMPERATURE_SERVICE
+#include "pigweed/rpc_services/TemperatureMeasurement.h"
+#endif // defined(PW_RPC_TEMPERATURE_SERVICE) && PW_RPC_TEMPERATURE_SERVICE
+
 #if defined(PW_RPC_DESCRIPTOR_SERVICE) && PW_RPC_DESCRIPTOR_SERVICE
 #include "pigweed/rpc_services/Descriptor.h"
 #endif // defined(PW_RPC_DESCRIPTOR_SERVICE) && PW_RPC_DESCRIPTOR_SERVICE
@@ -92,6 +96,10 @@ Device device_service;
 Lighting lighting_service;
 #endif // defined(PW_RPC_LIGHTING_SERVICE) && PW_RPC_LIGHTING_SERVICE
 
+#if defined(PW_RPC_TEMPERATURE_SERVICE) && PW_RPC_TEMPERATURE_SERVICE
+Temperature temperature_service;
+#endif // defined(PW_RPC_TEMPERATURE_SERVICE) && PW_RPC_TEMPERATURE_SERVICE
+
 #if defined(PW_RPC_LOCKING_SERVICE) && PW_RPC_LOCKING_SERVICE
 Locking Locking_service;
 #endif // defined(PW_RPC_LOCKING_SERVICE) && PW_RPC_LOCKING_SERVICE
@@ -113,6 +121,14 @@ void RegisterServices(pw::rpc::Server & server)
 #if defined(PW_RPC_BOOLEAN_STATE_SERVICE) && PW_RPC_BOOLEAN_STATE_SERVICE
     server.RegisterService(boolean_state_service);
 #endif // defined(PW_RPC_BOOLEAN_STATE_SERVICE) && PW_RPC_BOOLEAN_STATE_SERVICE
+
+#if defined(PW_RPC_LOCKING_SERVICE) && PW_RPC_LOCKING_SERVICE
+    server.RegisterService(Locking_service);
+#endif // defined(PW_RPC_LOCKING_SERVICE) && PW_RPC_LOCKING_SERVICE
+
+#if defined(PW_RPC_TEMPERATURE_SERVICE) && PW_RPC_TEMPERATURE_SERVICE
+    server.RegisterService(temperature_service);
+#endif // defined(PW_RPC_TEMPERATURE_SERVICE) && PW_RPC_TEMPERATURE_SERVICE
 
 #if defined(PW_RPC_OCCUPANCY_SENSING_SERVICE) && PW_RPC_OCCUPANCY_SENSING_SERVICE
     server.RegisterService(occupancy_sensing_service);

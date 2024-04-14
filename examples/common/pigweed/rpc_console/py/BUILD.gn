@@ -49,6 +49,7 @@ pw_python_package("chip_rpc") {
     "${chip_root}/examples/common/pigweed:locking_service.python",
     "${chip_root}/examples/common/pigweed:occupancy_sensing_service.python",
     "${chip_root}/examples/common/pigweed:ot_cli_service.python",
+    "${chip_root}/examples/common/pigweed:temperature_service.python",
     "${chip_root}/examples/common/pigweed:thread_service.python",
     "${chip_root}/examples/common/pigweed:wifi_service.python",
   ]

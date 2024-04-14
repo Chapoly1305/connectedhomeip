@@ -79,6 +79,13 @@ pw_proto_library("lighting_service") {
   prefix = "lighting_service"
 }
 
+pw_proto_library("temperature_service") {
+  sources = [ "protos/temperature_service.proto" ]
+  deps = [ "$dir_pw_protobuf:common_protos" ]
+  strip_prefix = "protos"
+  prefix = "temperature_service"
+}
+
 pw_proto_library("locking_service") {
   sources = [ "protos/locking_service.proto" ]
   deps = [ "$dir_pw_protobuf:common_protos" ]

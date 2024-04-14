@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+import 'pw_protobuf_protos/common.proto';
+
+package chip.rpc;
+
+
+message TemperatureState {
+  uint32 state_value = 1;
+}
+
+message TemperatureSetRequest {
+  uint32 endpoint_id = 1;
+  uint32 state_value = 2;
+}
+
+message TemperatureSetResponse {
+  uint64 event_number = 1;
+}
+
+message TemperatureGetRequest {
+  uint32 endpoint_id = 1;
+}
+
+message TemperatureGetResponse {
+  TemperatureState state = 1;
+}
+
+service Temperature {
+  rpc Set(TemperatureSetRequest) returns (TemperatureSetResponse){}
+  rpc Get(TemperatureGetRequest) returns (TemperatureState){}
+}
