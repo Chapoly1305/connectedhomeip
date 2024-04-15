@@ -4,18 +4,34 @@ import 'pw_protobuf_protos/common.proto';
 
 package chip.rpc;
 
+// This may eventually contain more attributes.
 message LockingState {
-  bool locked = 1;
+  uint32 state_value = 1;
+}
+
+message LockingSetRequest {
+  uint32 endpoint_id = 1;
+  uint32 state_value = 2;
+}
+
+message LockingSetResponse {
+  uint64 event_number = 1;
+}
+
+message LockingGetRequest {
+  uint32 endpoint_id = 1;
+}
+
+message LockingGetResponse {
+  LockingState state = 1;
 }
 
 service Locking {
-  // Set will return OK if all supported fields are successfully applied, any
+  // Set will return generated event number (caused by change) if all supported fields are successfully applied, any
   // unsupported fields will be ignored.
-  // Get can be used to determine which fields are supported.
-  rpc Set(LockingState) returns (pw.protobuf.Empty){}
+  rpc Set(LockingSetRequest) returns (LockingSetResponse){}
 
-  // Get will populate all of the supported locking state fields with the
-  // current values. This can be used to discover the devices supported
-  // locking features.
-  rpc Get(pw.protobuf.Empty) returns (LockingState){}
+  // Get will populate all of the supported boolean state cluster state fields
+  // with the current values.
+  rpc Get(LockingGetRequest) returns (LockingState){}
 }
