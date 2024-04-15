@@ -102,6 +102,22 @@ static_library("temperature_measurement") {
 
   public_configs = [ "${chip_root}/src:includes" ]
 }
+
+static_library("reletive_humidity_measurement") {
+  sources = [
+    "humidity.cpp",
+    "humidity.h",
+  ]
+
+  deps = [
+    ":windows",
+    "${chip_root}/src/app/common:cluster-objects",
+    "${chip_root}/third_party/imgui",
+  ]
+
+  public_configs = [ "${chip_root}/src:includes" ]
+}
+
 static_library("window_covering") {
   sources = [
     "window_covering.cpp",

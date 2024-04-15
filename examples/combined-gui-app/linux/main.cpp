@@ -37,6 +37,7 @@
 #include <imgui_ui/windows/light.h>
 #include <imgui_ui/windows/window_covering.h>
 #include <imgui_ui/windows/door_lock.h>
+#include <imgui_ui/windows/humidity.h>
 #endif
 
 using namespace chip;
@@ -115,6 +116,7 @@ int main(int argc, char * argv[])
         ui.AddWindow(std::make_unique<example::Ui::Windows::BooleanState>(chip::EndpointId(4), "Contact Sensor"));
         ui.AddWindow(std::make_unique<example::Ui::Windows::TemperatureMeasurement>(chip::EndpointId(5), "Temperature"));
         ui.AddWindow(std::make_unique<example::Ui::Windows::DoorLock>(chip::EndpointId(6), "DoorLock"));
+        ui.AddWindow(std::make_unique<example::Ui::Windows::RelativeHumidityMeasurement>(chip::EndpointId(7), "Humidity"));
 
 
 

@@ -60,6 +60,7 @@ executable("combined-gui-app") {
       "${chip_root}/examples/common/imgui_ui/windows:qrcode",
       "${chip_root}/examples/common/imgui_ui/windows:temperature_measurement",
       "${chip_root}/examples/common/imgui_ui/windows:window_covering",
+      "${chip_root}/examples/common/imgui_ui/windows:reletive_humidity_measurement",
     ]
   }
 
