@@ -93,6 +93,13 @@ pw_proto_library("locking_service") {
   prefix = "locking_service"
 }
 
+pw_proto_library("onoff_service") {
+  sources = [ "protos/onoff_service.proto" ]
+  deps = [ "$dir_pw_protobuf:common_protos" ]
+  strip_prefix = "protos"
+  prefix = "onoff_service"
+}
+
 pw_proto_library("occupancy_sensing_service") {
   sources = [ "protos/occupancy_sensing_service.proto" ]
   deps = [ "$dir_pw_protobuf:common_protos" ]

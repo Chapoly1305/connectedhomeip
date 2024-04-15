@@ -34,6 +34,10 @@
 #include "pigweed/rpc_services/TemperatureMeasurement.h"
 #endif // defined(PW_RPC_TEMPERATURE_SERVICE) && PW_RPC_TEMPERATURE_SERVICE
 
+#if defined(PW_RPC_ONOFF_SERVICE) && PW_RPC_ONOFF_SERVICE
+#include "pigweed/rpc_services/OnOff.h"
+#endif // defined(PW_RPC_ONOFF_SERVICE) && PW_RPC_ONOFF_SERVICE
+
 #if defined(PW_RPC_DESCRIPTOR_SERVICE) && PW_RPC_DESCRIPTOR_SERVICE
 #include "pigweed/rpc_services/Descriptor.h"
 #endif // defined(PW_RPC_DESCRIPTOR_SERVICE) && PW_RPC_DESCRIPTOR_SERVICE
@@ -88,6 +92,10 @@ BooleanState boolean_state_service;
 Descriptor descriptor_service;
 #endif // defined(PW_RPC_DESCRIPTOR_SERVICE) && PW_RPC_DESCRIPTOR_SERVICE
 
+#if defined(PW_RPC_ONOFF_SERVICE) && PW_RPC_ONOFF_SERVICE
+OnOff onoff_service;
+#endif // defined(PW_RPC_ONOFF_SERVICE) && PW_RPC_ONOFF_SERVICE
+
 #if defined(PW_RPC_DEVICE_SERVICE) && PW_RPC_DEVICE_SERVICE
 Device device_service;
 #endif // defined(PW_RPC_DEVICE_SERVICE) && PW_RPC_DEVICE_SERVICE
@@ -121,6 +129,10 @@ void RegisterServices(pw::rpc::Server & server)
 #if defined(PW_RPC_BOOLEAN_STATE_SERVICE) && PW_RPC_BOOLEAN_STATE_SERVICE
     server.RegisterService(boolean_state_service);
 #endif // defined(PW_RPC_BOOLEAN_STATE_SERVICE) && PW_RPC_BOOLEAN_STATE_SERVICE
+
+#if defined(PW_RPC_ONOFF_SERVICE) && PW_RPC_ONOFF_SERVICE
+    server.RegisterService(onoff_service);
+#endif // defined(PW_RPC_ONOFF_SERVICE) && PW_RPC_ONOFF_SERVICE
 
 #if defined(PW_RPC_LOCKING_SERVICE) && PW_RPC_LOCKING_SERVICE
     server.RegisterService(Locking_service);

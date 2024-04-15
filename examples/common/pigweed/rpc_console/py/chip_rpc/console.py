@@ -59,7 +59,7 @@ from thread_service import thread_service_pb2
 from wifi_service import wifi_service_pb2
 from occupancy_sensing_service import occupancy_sensing_service_pb2
 from temperature_service import temperature_service_pb2
-
+from onoff_service import onoff_service_pb2
 
 def _parse_args():
     """Parses and returns the command line arguments."""
@@ -137,6 +137,7 @@ def show_console(device: str, baudrate: int,
                 descriptor_service_pb2,
                 device_service_pb2,
                 echo_pb2,
+                onoff_service_pb2,
                 lighting_service_pb2,
                 locking_service_pb2,
                 ot_cli_service_pb2,
