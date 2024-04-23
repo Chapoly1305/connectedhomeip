@@ -36,7 +36,7 @@ config("includes") {
 
 executable("combined-gui-app") {
   sources = [
-    "${chip_root}/examples/all-clusters-app/combined-common/src/binding-handler.cpp",
+    "${chip_root}/examples/combined-gui-app/combined-common/src/binding-handler.cpp",
     "${chip_root}/examples/combined-gui-app/combined-common/src/CombinedAppCommandDelegate.cpp",
     "${chip_root}/examples/combined-gui-app/combined-common/src/WindowCoveringManager.cpp",
     "include/CHIPProjectAppConfig.h",
