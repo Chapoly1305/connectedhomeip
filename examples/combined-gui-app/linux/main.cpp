@@ -27,6 +27,7 @@
 #include <app/ConcreteAttributePath.h>
 #include <app/server/Server.h>
 #include <lib/support/logging/CHIPLogging.h>
+#include "binding-handler.h"
 
 #if defined(CHIP_IMGUI_ENABLED) && CHIP_IMGUI_ENABLED
 #include <imgui_ui/ui.h>
@@ -96,6 +97,8 @@ void ApplicationShutdown()
 int main(int argc, char * argv[])
 {
     VerifyOrDie(ChipLinuxAppInit(argc, argv) == 0);
+    VerifyOrDie(InitBindingHandlers() == CHIP_NO_ERROR);
+
     CHIP_ERROR err = LightingMgr().Init();
     if (err != CHIP_NO_ERROR)
     {
