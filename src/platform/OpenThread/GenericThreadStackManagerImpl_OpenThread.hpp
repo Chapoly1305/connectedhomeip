@@ -52,6 +52,7 @@
 #include <lib/support/FixedBufferAllocator.h>
 #include <lib/support/ThreadOperationalDataset.h>
 #include <lib/support/logging/CHIPLogging.h>
+#include <platform/DiagnosticDataProvider.h>
 #include <platform/OpenThread/GenericNetworkCommissioningThreadDriver.h>
 #include <platform/OpenThread/GenericThreadStackManagerImpl_OpenThread.h>
 #include <platform/OpenThread/OpenThreadUtils.h>
@@ -223,6 +224,26 @@ void GenericThreadStackManagerImpl_OpenThread<ImplClass>::_OnPlatformEvent(const
             {
                 ChipLogError(DeviceLayer, "Failed to post Thread connectivity change: %" CHIP_ERROR_FORMAT, status.Format());
             }
+
+            ThreadDiagnosticsDelegate * delegate = GetDiagnosticDataProvider().GetThreadDiagnosticsDelegate();
+
+            if (delegate)
+            {
+                if (mIsAttached)
+                {
+                    delegate->OnConnectionStatusChanged(app::Clusters::ThreadNetworkDiagnostics::ConnectionStatusEnum::kConnected);
+                }
+                else
+                {
+                    delegate->OnConnectionStatusChanged(
+                        app::Clusters::ThreadNetworkDiagnostics::ConnectionStatusEnum::kNotConnected);
+
+                    GeneralFaults<kMaxNetworkFaults> current;
+                    current.add(to_underlying(chip::app::Clusters::ThreadNetworkDiagnostics::NetworkFaultEnum::kLinkDown));
+                    delegate->OnNetworkFaultChanged(mNetworkFaults, current);
+                    mNetworkFaults = current;
+                }
+            }
         }
 
 #if CHIP_DETAIL_LOGGING
@@ -356,6 +377,14 @@ template <class ImplClass>
 CHIP_ERROR GenericThreadStackManagerImpl_OpenThread<ImplClass>::_AttachToThreadNetwork(
     const Thread::OperationalDataset & dataset, NetworkCommissioning::Internal::WirelessDriver::ConnectCallback * callback)
 {
+    Thread::OperationalDataset current_dataset;
+    // Validate the dataset change with the current state
+    ThreadStackMgrImpl().GetThreadProvision(current_dataset);
+    if (dataset.AsByteSpan().data_equal(current_dataset.AsByteSpan()) && callback == nullptr)
+    {
+        return CHIP_NO_ERROR;
+    }
+
     // Reset the previously set callback since it will never be called in case incorrect dataset was supplied.
     mpConnectCallback = nullptr;
     ReturnErrorOnFailure(Impl()->SetThreadEnabled(false));
@@ -1195,6 +1224,7 @@ void GenericThreadStackManagerImpl_OpenThread<ImplClass>::_ErasePersistentInfo(v
     ChipLogProgress(DeviceLayer, "Erasing Thread persistent info...");
     Impl()->LockThreadStack();
     otThreadSetEnabled(mOTInst, false);
+    otIp6SetEnabled(mOTInst, false);
     otInstanceErasePersistentInfo(mOTInst);
     Impl()->UnlockThreadStack();
 }
