@@ -1207,6 +1207,81 @@ cluster OtaSoftwareUpdateProvider = 41 {
   command NotifyUpdateApplied(NotifyUpdateAppliedRequest): DefaultSuccess = 4;
 }
 
+/** Provides an interface for providing OTA software updates */
+cluster OtaSoftwareUpdateProvider = 41 {
+  revision 1; // NOTE: Default/not specifically set
+
+  enum ApplyUpdateActionEnum : enum8 {
+    kProceed = 0;
+    kAwaitNextAction = 1;
+    kDiscontinue = 2;
+  }
+
+  enum DownloadProtocolEnum : enum8 {
+    kBDXSynchronous = 0;
+    kBDXAsynchronous = 1;
+    kHTTPS = 2 [spec_name = "HTTPS"];
+    kVendorSpecific = 3;
+  }
+
+  enum StatusEnum : enum8 {
+    kUpdateAvailable = 0;
+    kBusy = 1;
+    kNotAvailable = 2;
+    kDownloadProtocolNotSupported = 3;
+  }
+
+  readonly attribute command_id generatedCommandList[] = 65528;
+  readonly attribute command_id acceptedCommandList[] = 65529;
+  readonly attribute attrib_id attributeList[] = 65531;
+  readonly attribute bitmap32 featureMap = 65532;
+  readonly attribute int16u clusterRevision = 65533;
+
+  request struct QueryImageRequest {
+    vendor_id vendorID = 0;
+    int16u productID = 1;
+    int32u softwareVersion = 2;
+    DownloadProtocolEnum protocolsSupported[] = 3;
+    optional int16u hardwareVersion = 4;
+    optional char_string<2> location = 5;
+    optional boolean requestorCanConsent = 6;
+    optional octet_string<512> metadataForProvider = 7;
+  }
+
+  response struct QueryImageResponse = 1 {
+    StatusEnum status = 0;
+    optional int32u delayedActionTime = 1;
+    optional char_string<256> imageURI = 2;
+    optional int32u softwareVersion = 3;
+    optional char_string<64> softwareVersionString = 4;
+    optional octet_string<32> updateToken = 5;
+    optional boolean userConsentNeeded = 6;
+    optional octet_string<512> metadataForRequestor = 7;
+  }
+
+  request struct ApplyUpdateRequestRequest {
+    octet_string<32> updateToken = 0;
+    int32u newVersion = 1;
+  }
+
+  response struct ApplyUpdateResponse = 3 {
+    ApplyUpdateActionEnum action = 0;
+    int32u delayedActionTime = 1;
+  }
+
+  request struct NotifyUpdateAppliedRequest {
+    octet_string<32> updateToken = 0;
+    int32u softwareVersion = 1;
+  }
+
+  /** Determine availability of a new Software Image */
+  command QueryImage(QueryImageRequest): QueryImageResponse = 0;
+  /** Determine next action to take for a downloaded Software Image */
+  command ApplyUpdateRequest(ApplyUpdateRequestRequest): ApplyUpdateResponse = 2;
+  /** Notify OTA Provider that an update was applied */
+  command NotifyUpdateApplied(NotifyUpdateAppliedRequest): DefaultSuccess = 4;
+}
+
 /** Provides an interface for downloading and applying OTA software updates */
 cluster OtaSoftwareUpdateRequestor = 42 {
   revision 1; // NOTE: Default/not specifically set
@@ -2940,6 +3015,103 @@ cluster BooleanState = 69 {
   readonly attribute attrib_id attributeList[] = 65531;
   readonly attribute bitmap32 featureMap = 65532;
   readonly attribute int16u clusterRevision = 65533;
+}
+
+/** Allows servers to ensure that listed clients are notified when a server is available for communication. */
+cluster IcdManagement = 70 {
+  revision 3;
+
+  enum ClientTypeEnum : enum8 {
+    kPermanent = 0;
+    kEphemeral = 1;
+  }
+
+  enum OperatingModeEnum : enum8 {
+    kSIT = 0 [spec_name = "SIT"];
+    kLIT = 1 [spec_name = "LIT"];
+  }
+
+  bitmap Feature : bitmap32 {
+    kCheckInProtocolSupport = 0x1;
+    kUserActiveModeTrigger = 0x2;
+    kLongIdleTimeSupport = 0x4;
+    kDynamicSitLitSupport = 0x8;
+  }
+
+  bitmap UserActiveModeTriggerBitmap : bitmap32 {
+    kPowerCycle = 0x1;
+    kSettingsMenu = 0x2;
+    kCustomInstruction = 0x4;
+    kDeviceManual = 0x8;
+    kActuateSensor = 0x10;
+    kActuateSensorSeconds = 0x20;
+    kActuateSensorTimes = 0x40;
+    kActuateSensorLightsBlink = 0x80;
+    kResetButton = 0x100;
+    kResetButtonLightsBlink = 0x200;
+    kResetButtonSeconds = 0x400;
+    kResetButtonTimes = 0x800;
+    kSetupButton = 0x1000;
+    kSetupButtonSeconds = 0x2000;
+    kSetupButtonLightsBlink = 0x4000;
+    kSetupButtonTimes = 0x8000;
+    kAppDefinedButton = 0x10000;
+  }
+
+  fabric_scoped struct MonitoringRegistrationStruct {
+    fabric_sensitive node_id checkInNodeID = 1;
+    fabric_sensitive int64u monitoredSubject = 2;
+    fabric_sensitive ClientTypeEnum clientType = 4;
+    fabric_idx fabricIndex = 254;
+  }
+
+  readonly attribute int32u idleModeDuration = 0;
+  readonly attribute int32u activeModeDuration = 1;
+  readonly attribute int16u activeModeThreshold = 2;
+  readonly attribute access(read: administer) optional MonitoringRegistrationStruct registeredClients[] = 3;
+  readonly attribute access(read: administer) optional int32u ICDCounter = 4;
+  readonly attribute optional int16u clientsSupportedPerFabric = 5;
+  readonly attribute optional UserActiveModeTriggerBitmap userActiveModeTriggerHint = 6;
+  readonly attribute optional char_string<128> userActiveModeTriggerInstruction = 7;
+  readonly attribute optional OperatingModeEnum operatingMode = 8;
+  readonly attribute optional int32u maximumCheckInBackOff = 9;
+  readonly attribute command_id generatedCommandList[] = 65528;
+  readonly attribute command_id acceptedCommandList[] = 65529;
+  readonly attribute attrib_id attributeList[] = 65531;
+  readonly attribute bitmap32 featureMap = 65532;
+  readonly attribute int16u clusterRevision = 65533;
+
+  request struct RegisterClientRequest {
+    node_id checkInNodeID = 0;
+    int64u monitoredSubject = 1;
+    octet_string<16> key = 2;
+    optional octet_string<16> verificationKey = 3;
+    ClientTypeEnum clientType = 4;
+  }
+
+  response struct RegisterClientResponse = 1 {
+    int32u ICDCounter = 0;
+  }
+
+  request struct UnregisterClientRequest {
+    node_id checkInNodeID = 0;
+    optional octet_string<16> verificationKey = 1;
+  }
+
+  request struct StayActiveRequestRequest {
+    int32u stayActiveDuration = 0;
+  }
+
+  response struct StayActiveResponse = 4 {
+    int32u promisedActiveDuration = 0;
+  }
+
+  /** This command allows a client to register itself with the ICD to be notified when the device is available for communication. */
+  fabric command access(invoke: manage) RegisterClient(RegisterClientRequest): RegisterClientResponse = 0;
+  /** This command allows a client to unregister itself with the ICD. */
+  fabric command access(invoke: manage) UnregisterClient(UnregisterClientRequest): DefaultSuccess = 2;
+  /** This command allows a client to request that the server stays in active mode for at least a given time duration (in milliseconds) from when this command is received. */
+  command StayActiveRequest(StayActiveRequestRequest): StayActiveResponse = 3;
 }
 
 /** This cluster supports remotely monitoring and, where supported, changing the operational state of an Oven. */
@@ -10527,497 +10699,6 @@ endpoint 0 {
 
   binding cluster OtaSoftwareUpdateProvider;
 
-  server cluster Groups {
-    ram      attribute nameSupport;
-    ram      attribute featureMap default = 0;
-    ram      attribute clusterRevision default = 4;
-
-    handle command AddGroup;
-    handle command AddGroupResponse;
-    handle command ViewGroup;
-    handle command ViewGroupResponse;
-    handle command GetGroupMembership;
-    handle command GetGroupMembershipResponse;
-    handle command RemoveGroup;
-    handle command RemoveGroupResponse;
-    handle command RemoveAllGroups;
-    handle command AddGroupIfIdentifying;
-  }
-
-  server cluster Descriptor {
-    callback attribute deviceTypeList;
-    callback attribute serverList;
-    callback attribute clientList;
-    callback attribute partsList;
-    callback attribute tagList;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-  }
-
-  server cluster Binding {
-    callback attribute binding;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-  }
-
-  server cluster AccessControl {
-    emits event AccessControlEntryChanged;
-    emits event AccessControlExtensionChanged;
-    callback attribute acl;
-    callback attribute extension;
-    callback attribute subjectsPerAccessControlEntry;
-    callback attribute targetsPerAccessControlEntry;
-    callback attribute accessControlEntriesPerFabric;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-  }
-
-  server cluster BasicInformation {
-    emits event StartUp;
-    emits event ShutDown;
-    emits event Leave;
-    callback attribute dataModelRevision;
-    callback attribute vendorName;
-    callback attribute vendorID;
-    callback attribute productName;
-    callback attribute productID;
-    callback attribute nodeLabel;
-    callback attribute location;
-    callback attribute hardwareVersion;
-    callback attribute hardwareVersionString;
-    callback attribute softwareVersion;
-    callback attribute softwareVersionString;
-    callback attribute manufacturingDate;
-    callback attribute partNumber;
-    callback attribute productURL;
-    callback attribute productLabel;
-    callback attribute serialNumber;
-    callback attribute localConfigDisabled;
-    callback attribute uniqueID;
-    callback attribute capabilityMinima;
-    callback attribute productAppearance;
-    callback attribute specificationVersion;
-    callback attribute maxPathsPerInvoke;
-    callback attribute configurationVersion;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-  }
-
-  server cluster OtaSoftwareUpdateRequestor {
-    emits event StateTransition;
-    emits event VersionApplied;
-    emits event DownloadError;
-    callback attribute defaultOTAProviders;
-    ram      attribute updatePossible default = 1;
-    ram      attribute updateState default = 0;
-    ram      attribute updateStateProgress default = 0;
-    ram      attribute featureMap default = 0;
-    ram      attribute clusterRevision default = 1;
-
-    handle command AnnounceOTAProvider;
-  }
-
-  server cluster LocalizationConfiguration {
-    ram      attribute activeLocale default = "en-US";
-    callback attribute supportedLocales;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap default = 0;
-    callback attribute clusterRevision;
-  }
-
-  server cluster TimeFormatLocalization {
-    ram      attribute hourFormat default = 0;
-    ram      attribute activeCalendarType default = 0;
-    callback attribute supportedCalendarTypes;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    ram      attribute featureMap default = 1;
-    callback attribute clusterRevision;
-  }
-
-  server cluster UnitLocalization {
-    callback attribute temperatureUnit;
-    callback attribute supportedTemperatureUnits;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    ram      attribute featureMap default = 0x1;
-    ram      attribute clusterRevision default = 1;
-  }
-
-  server cluster PowerSourceConfiguration {
-    callback attribute sources;
-    ram      attribute featureMap default = 0;
-    ram      attribute clusterRevision default = 1;
-  }
-
-  server cluster PowerSource {
-    ram      attribute status default = 0;
-    ram      attribute order default = 3;
-    ram      attribute description default = "B1";
-    ram      attribute batChargeLevel default = 0;
-    ram      attribute batReplacementNeeded;
-    ram      attribute batReplaceability;
-    callback attribute endpointList;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    ram      attribute featureMap default = 2;
-    callback attribute clusterRevision;
-  }
-
-  server cluster GeneralCommissioning {
-    callback attribute breadcrumb;
-    callback attribute basicCommissioningInfo;
-    callback attribute regulatoryConfig;
-    callback attribute locationCapability;
-    callback attribute supportsConcurrentConnection;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-
-    handle command ArmFailSafe;
-    handle command ArmFailSafeResponse;
-    handle command SetRegulatoryConfig;
-    handle command SetRegulatoryConfigResponse;
-    handle command CommissioningComplete;
-    handle command CommissioningCompleteResponse;
-  }
-
-  server cluster NetworkCommissioning {
-    callback attribute maxNetworks;
-    callback attribute networks;
-    callback attribute scanMaxTimeSeconds;
-    callback attribute connectMaxTimeSeconds;
-    callback attribute interfaceEnabled;
-    callback attribute lastNetworkingStatus;
-    callback attribute lastNetworkID;
-    callback attribute lastConnectErrorValue;
-    callback attribute supportedWiFiBands;
-    callback attribute supportedThreadFeatures;
-    callback attribute threadVersion;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-
-    handle command ScanNetworks;
-    handle command ScanNetworksResponse;
-    handle command AddOrUpdateWiFiNetwork;
-    handle command AddOrUpdateThreadNetwork;
-    handle command RemoveNetwork;
-    handle command NetworkConfigResponse;
-    handle command ConnectNetwork;
-    handle command ConnectNetworkResponse;
-    handle command ReorderNetwork;
-  }
-
-  server cluster DiagnosticLogs {
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-
-    handle command RetrieveLogsRequest;
-    handle command RetrieveLogsResponse;
-  }
-
-  server cluster GeneralDiagnostics {
-    emits event HardwareFaultChange;
-    emits event RadioFaultChange;
-    emits event NetworkFaultChange;
-    emits event BootReason;
-    callback attribute networkInterfaces;
-    callback attribute rebootCount;
-    callback attribute upTime;
-    callback attribute totalOperationalHours;
-    callback attribute bootReason;
-    callback attribute activeHardwareFaults;
-    callback attribute activeRadioFaults;
-    callback attribute activeNetworkFaults;
-    callback attribute testEventTriggersEnabled;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-
-    handle command TestEventTrigger;
-    handle command TimeSnapshot;
-    handle command TimeSnapshotResponse;
-    handle command PayloadTestRequest;
-    handle command PayloadTestResponse;
-  }
-
-  server cluster SoftwareDiagnostics {
-    emits event SoftwareFault;
-    callback attribute threadMetrics;
-    callback attribute currentHeapFree;
-    callback attribute currentHeapUsed;
-    callback attribute currentHeapHighWatermark;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-
-    handle command ResetWatermarks;
-  }
-
-  server cluster ThreadNetworkDiagnostics {
-    callback attribute channel;
-    callback attribute routingRole;
-    callback attribute networkName;
-    callback attribute panId;
-    callback attribute extendedPanId;
-    callback attribute meshLocalPrefix;
-    callback attribute overrunCount;
-    callback attribute neighborTable;
-    callback attribute routeTable;
-    callback attribute partitionId;
-    callback attribute weighting;
-    callback attribute dataVersion;
-    callback attribute stableDataVersion;
-    callback attribute leaderRouterId;
-    callback attribute detachedRoleCount;
-    callback attribute childRoleCount;
-    callback attribute routerRoleCount;
-    callback attribute leaderRoleCount;
-    callback attribute attachAttemptCount;
-    callback attribute partitionIdChangeCount;
-    callback attribute betterPartitionAttachAttemptCount;
-    callback attribute parentChangeCount;
-    callback attribute txTotalCount;
-    callback attribute txUnicastCount;
-    callback attribute txBroadcastCount;
-    callback attribute txAckRequestedCount;
-    callback attribute txAckedCount;
-    callback attribute txNoAckRequestedCount;
-    callback attribute txDataCount;
-    callback attribute txDataPollCount;
-    callback attribute txBeaconCount;
-    callback attribute txBeaconRequestCount;
-    callback attribute txOtherCount;
-    callback attribute txRetryCount;
-    callback attribute txDirectMaxRetryExpiryCount;
-    callback attribute txIndirectMaxRetryExpiryCount;
-    callback attribute txErrCcaCount;
-    callback attribute txErrAbortCount;
-    callback attribute txErrBusyChannelCount;
-    callback attribute rxTotalCount;
-    callback attribute rxUnicastCount;
-    callback attribute rxBroadcastCount;
-    callback attribute rxDataCount;
-    callback attribute rxDataPollCount;
-    callback attribute rxBeaconCount;
-    callback attribute rxBeaconRequestCount;
-    callback attribute rxOtherCount;
-    callback attribute rxAddressFilteredCount;
-    callback attribute rxDestAddrFilteredCount;
-    callback attribute rxDuplicatedCount;
-    callback attribute rxErrNoFrameCount;
-    callback attribute rxErrUnknownNeighborCount;
-    callback attribute rxErrInvalidSrcAddrCount;
-    callback attribute rxErrSecCount;
-    callback attribute rxErrFcsCount;
-    callback attribute rxErrOtherCount;
-    callback attribute activeTimestamp;
-    callback attribute pendingTimestamp;
-    callback attribute delay;
-    callback attribute securityPolicy;
-    callback attribute channelPage0Mask;
-    callback attribute operationalDatasetComponents;
-    callback attribute activeNetworkFaultsList;
-    ram      attribute featureMap default = 0x000F;
-    callback attribute clusterRevision;
-
-    handle command ResetCounts;
-  }
-
-  server cluster WiFiNetworkDiagnostics {
-    emits event Disconnection;
-    emits event AssociationFailure;
-    emits event ConnectionStatus;
-    callback attribute bssid;
-    callback attribute securityType;
-    callback attribute wiFiVersion;
-    callback attribute channelNumber;
-    callback attribute rssi;
-    callback attribute beaconLostCount;
-    callback attribute beaconRxCount;
-    callback attribute packetMulticastRxCount;
-    callback attribute packetMulticastTxCount;
-    callback attribute packetUnicastRxCount;
-    callback attribute packetUnicastTxCount;
-    callback attribute currentMaxRate;
-    callback attribute overrunCount;
-    ram      attribute featureMap default = 3;
-    callback attribute clusterRevision default = 1;
-
-    handle command ResetCounts;
-  }
-
-  server cluster EthernetNetworkDiagnostics {
-    callback attribute PHYRate;
-    callback attribute fullDuplex;
-    callback attribute packetRxCount;
-    callback attribute packetTxCount;
-    callback attribute txErrCount;
-    callback attribute collisionCount;
-    callback attribute overrunCount;
-    callback attribute carrierDetect;
-    callback attribute timeSinceReset;
-    ram      attribute featureMap default = 3;
-    callback attribute clusterRevision;
-
-    handle command ResetCounts;
-  }
-
-  server cluster TimeSynchronization {
-    emits event DSTTableEmpty;
-    emits event DSTStatus;
-    emits event TimeZoneStatus;
-    emits event TimeFailure;
-    emits event MissingTrustedTimeSource;
-    callback attribute UTCTime;
-    callback attribute granularity;
-    ram      attribute timeSource default = 0x00;
-    callback attribute trustedTimeSource;
-    callback attribute defaultNTP;
-    callback attribute timeZone;
-    callback attribute DSTOffset;
-    callback attribute localTime;
-    ram      attribute timeZoneDatabase default = 0;
-    callback attribute timeZoneListMaxSize;
-    callback attribute DSTOffsetListMaxSize;
-    ram      attribute supportsDNSResolve default = true;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    ram      attribute featureMap default = 0x0B;
-    ram      attribute clusterRevision default = 2;
-
-    handle command SetUTCTime;
-    handle command SetTrustedTimeSource;
-    handle command SetTimeZone;
-    handle command SetTimeZoneResponse;
-    handle command SetDSTOffset;
-    handle command SetDefaultNTP;
-  }
-
-  server cluster AdministratorCommissioning {
-    callback attribute windowStatus;
-    callback attribute adminFabricIndex;
-    callback attribute adminVendorId;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    ram      attribute featureMap default = 1;
-    callback attribute clusterRevision;
-
-    handle command OpenCommissioningWindow;
-    handle command OpenBasicCommissioningWindow;
-    handle command RevokeCommissioning;
-  }
-
-  server cluster OperationalCredentials {
-    callback attribute NOCs;
-    callback attribute fabrics;
-    callback attribute supportedFabrics;
-    callback attribute commissionedFabrics;
-    callback attribute trustedRootCertificates;
-    callback attribute currentFabricIndex;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-
-    handle command AttestationRequest;
-    handle command AttestationResponse;
-    handle command CertificateChainRequest;
-    handle command CertificateChainResponse;
-    handle command CSRRequest;
-    handle command CSRResponse;
-    handle command AddNOC;
-    handle command UpdateNOC;
-    handle command NOCResponse;
-    handle command UpdateFabricLabel;
-    handle command RemoveFabric;
-    handle command AddTrustedRootCertificate;
-    handle command SetVIDVerificationStatement;
-    handle command SignVIDVerificationRequest;
-    handle command SignVIDVerificationResponse;
-  }
-
-  server cluster GroupKeyManagement {
-    callback attribute groupKeyMap;
-    callback attribute groupTable;
-    callback attribute maxGroupsPerFabric;
-    callback attribute maxGroupKeysPerFabric;
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-
-    handle command KeySetWrite;
-    handle command KeySetRead;
-    handle command KeySetReadResponse;
-    handle command KeySetRemove;
-    handle command KeySetReadAllIndices;
-    handle command KeySetReadAllIndicesResponse;
-  }
-
-  server cluster FixedLabel {
-    callback attribute labelList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-  }
-
-  server cluster UserLabel {
-    callback attribute labelList;
-    callback attribute featureMap;
-    callback attribute clusterRevision;
-  }
-
-  server cluster RelativeHumidityMeasurement {
-    ram      attribute measuredValue;
-    ram      attribute minMeasuredValue default = 0;
-    ram      attribute maxMeasuredValue default = 0x2710;
-    ram      attribute featureMap default = 0;
-    ram      attribute clusterRevision default = 3;
-  }
-
-  server cluster FaultInjection {
-    callback attribute generatedCommandList;
-    callback attribute acceptedCommandList;
-    callback attribute attributeList;
-    ram      attribute featureMap default = 0;
-    ram      attribute clusterRevision default = 1;
-
-    handle command FailAtFault;
-    handle command FailRandomlyAtFault;
-  }
-}
-endpoint 1 {
-  device type ma_powersource = 17, version 1;
-  device type ma_onofflight = 256, version 1;
-
-
   server cluster Identify {
     callback attribute identifyTime;
     callback attribute identifyType;
@@ -11095,6 +10776,24 @@ endpoint 1 {
     callback attribute binding;
   }
 
+  server cluster AccessControl {
+    emits event AccessControlEntryChanged;
+    emits event AccessControlExtensionChanged;
+    emits event FabricRestrictionReviewUpdate;
+    emits event AuxiliaryAccessUpdated;
+    callback attribute acl;
+    callback attribute extension;
+    callback attribute subjectsPerAccessControlEntry;
+    callback attribute targetsPerAccessControlEntry;
+    callback attribute accessControlEntriesPerFabric;
+    callback attribute commissioningARL;
+    callback attribute arl;
+    callback attribute auxiliaryACL;
+
+    handle command ReviewFabricRestrictions;
+    handle command ReviewFabricRestrictionsResponse;
+  }
+
   server cluster Actions {
     emits event StateChanged;
     emits event ActionFailed;
@@ -11114,6 +10813,78 @@ endpoint 1 {
     handle command EnableActionWithDuration;
     handle command DisableAction;
     handle command DisableActionWithDuration;
+  }
+
+  server cluster BasicInformation {
+    emits event StartUp;
+    emits event ShutDown;
+    emits event Leave;
+    emits event ReachableChanged;
+    callback attribute dataModelRevision;
+    callback attribute vendorName;
+    callback attribute vendorID;
+    callback attribute productName;
+    callback attribute productID;
+    callback attribute nodeLabel;
+    callback attribute location;
+    callback attribute hardwareVersion;
+    callback attribute hardwareVersionString;
+    callback attribute softwareVersion;
+    callback attribute softwareVersionString;
+    callback attribute manufacturingDate;
+    callback attribute partNumber;
+    callback attribute productURL;
+    callback attribute productLabel;
+    callback attribute serialNumber;
+    callback attribute localConfigDisabled;
+    callback attribute reachable;
+    callback attribute uniqueID;
+    callback attribute capabilityMinima;
+    callback attribute productAppearance;
+    callback attribute specificationVersion;
+    callback attribute maxPathsPerInvoke;
+    callback attribute configurationVersion;
+  }
+
+  server cluster OtaSoftwareUpdateProvider {
+
+    handle command QueryImage;
+    handle command QueryImageResponse;
+    handle command ApplyUpdateRequest;
+    handle command ApplyUpdateResponse;
+    handle command NotifyUpdateApplied;
+  }
+
+  server cluster OtaSoftwareUpdateRequestor {
+    emits event StateTransition;
+    emits event VersionApplied;
+    emits event DownloadError;
+    callback attribute defaultOTAProviders;
+    callback attribute updatePossible default = true;
+    callback attribute updateState default = "Unknown";
+    callback attribute updateStateProgress;
+
+    handle command AnnounceOTAProvider;
+  }
+
+  server cluster LocalizationConfiguration {
+    callback attribute activeLocale;
+    callback attribute supportedLocales;
+  }
+
+  server cluster TimeFormatLocalization {
+    callback attribute hourFormat;
+    callback attribute activeCalendarType;
+    callback attribute supportedCalendarTypes;
+  }
+
+  server cluster UnitLocalization {
+    callback attribute temperatureUnit;
+    callback attribute supportedTemperatureUnits;
+  }
+
+  server cluster PowerSourceConfiguration {
+    callback attribute sources;
   }
 
   server cluster PowerSource {
@@ -11154,6 +10925,230 @@ endpoint 1 {
     callback attribute endpointList;
   }
 
+  server cluster GeneralCommissioning {
+    callback attribute breadcrumb;
+    callback attribute basicCommissioningInfo;
+    callback attribute regulatoryConfig;
+    callback attribute locationCapability;
+    callback attribute supportsConcurrentConnection;
+    callback attribute TCAcceptedVersion;
+    callback attribute TCMinRequiredVersion;
+    callback attribute TCAcknowledgements;
+    callback attribute TCAcknowledgementsRequired default = 1;
+    callback attribute TCUpdateDeadline;
+    callback attribute recoveryIdentifier default = "0";
+    callback attribute networkRecoveryReason;
+    callback attribute isCommissioningWithoutPower default = 0;
+
+    handle command ArmFailSafe;
+    handle command ArmFailSafeResponse;
+    handle command SetRegulatoryConfig;
+    handle command SetRegulatoryConfigResponse;
+    handle command CommissioningComplete;
+    handle command CommissioningCompleteResponse;
+    handle command SetTCAcknowledgements;
+    handle command SetTCAcknowledgementsResponse;
+  }
+
+  server cluster NetworkCommissioning {
+    callback attribute maxNetworks;
+    callback attribute networks;
+    callback attribute scanMaxTimeSeconds;
+    callback attribute connectMaxTimeSeconds;
+    callback attribute interfaceEnabled;
+    callback attribute lastNetworkingStatus;
+    callback attribute lastNetworkID;
+    callback attribute lastConnectErrorValue;
+    callback attribute supportedWiFiBands;
+    callback attribute supportedThreadFeatures;
+    callback attribute threadVersion;
+
+    handle command ScanNetworks;
+    handle command ScanNetworksResponse;
+    handle command AddOrUpdateWiFiNetwork;
+    handle command AddOrUpdateThreadNetwork;
+    handle command RemoveNetwork;
+    handle command NetworkConfigResponse;
+    handle command ConnectNetwork;
+    handle command ConnectNetworkResponse;
+    handle command ReorderNetwork;
+    handle command QueryIdentity;
+    handle command QueryIdentityResponse;
+  }
+
+  server cluster DiagnosticLogs {
+
+    handle command RetrieveLogsRequest;
+    handle command RetrieveLogsResponse;
+  }
+
+  server cluster GeneralDiagnostics {
+    emits event HardwareFaultChange;
+    emits event RadioFaultChange;
+    emits event NetworkFaultChange;
+    emits event BootReason;
+    callback attribute networkInterfaces;
+    callback attribute rebootCount;
+    callback attribute upTime;
+    callback attribute totalOperationalHours;
+    callback attribute bootReason;
+    callback attribute activeHardwareFaults;
+    callback attribute activeRadioFaults;
+    callback attribute activeNetworkFaults;
+    callback attribute testEventTriggersEnabled;
+
+    handle command TestEventTrigger;
+    handle command TimeSnapshot;
+    handle command TimeSnapshotResponse;
+    handle command PayloadTestRequest;
+    handle command PayloadTestResponse;
+  }
+
+  server cluster SoftwareDiagnostics {
+    emits event SoftwareFault;
+    callback attribute threadMetrics;
+    callback attribute currentHeapFree;
+    callback attribute currentHeapUsed;
+    callback attribute currentHeapHighWatermark;
+
+    handle command ResetWatermarks;
+  }
+
+  server cluster ThreadNetworkDiagnostics {
+    emits event ConnectionStatus;
+    emits event NetworkFaultChange;
+    callback attribute channel;
+    callback attribute routingRole;
+    callback attribute networkName;
+    callback attribute panId;
+    callback attribute extendedPanId;
+    callback attribute meshLocalPrefix;
+    callback attribute overrunCount;
+    callback attribute neighborTable;
+    callback attribute routeTable;
+    callback attribute partitionId;
+    callback attribute weighting;
+    callback attribute dataVersion;
+    callback attribute stableDataVersion;
+    callback attribute leaderRouterId;
+    callback attribute detachedRoleCount;
+    callback attribute childRoleCount;
+    callback attribute routerRoleCount;
+    callback attribute leaderRoleCount;
+    callback attribute attachAttemptCount;
+    callback attribute partitionIdChangeCount;
+    callback attribute betterPartitionAttachAttemptCount;
+    callback attribute parentChangeCount;
+    callback attribute txTotalCount;
+    callback attribute txUnicastCount;
+    callback attribute txBroadcastCount;
+    callback attribute txAckRequestedCount;
+    callback attribute txAckedCount;
+    callback attribute txNoAckRequestedCount;
+    callback attribute txDataCount;
+    callback attribute txDataPollCount;
+    callback attribute txBeaconCount;
+    callback attribute txBeaconRequestCount;
+    callback attribute txOtherCount;
+    callback attribute txRetryCount;
+    callback attribute txDirectMaxRetryExpiryCount;
+    callback attribute txIndirectMaxRetryExpiryCount;
+    callback attribute txErrCcaCount;
+    callback attribute txErrAbortCount;
+    callback attribute txErrBusyChannelCount;
+    callback attribute rxTotalCount;
+    callback attribute rxUnicastCount;
+    callback attribute rxBroadcastCount;
+    callback attribute rxDataCount;
+    callback attribute rxDataPollCount;
+    callback attribute rxBeaconCount;
+    callback attribute rxBeaconRequestCount;
+    callback attribute rxOtherCount;
+    callback attribute rxAddressFilteredCount;
+    callback attribute rxDestAddrFilteredCount;
+    callback attribute rxDuplicatedCount;
+    callback attribute rxErrNoFrameCount;
+    callback attribute rxErrUnknownNeighborCount;
+    callback attribute rxErrInvalidSrcAddrCount;
+    callback attribute rxErrSecCount;
+    callback attribute rxErrFcsCount;
+    callback attribute rxErrOtherCount;
+    callback attribute activeTimestamp;
+    callback attribute pendingTimestamp;
+    callback attribute delay;
+    callback attribute securityPolicy;
+    callback attribute channelPage0Mask;
+    callback attribute operationalDatasetComponents;
+    callback attribute activeNetworkFaultsList;
+    callback attribute extAddress;
+    callback attribute rloc16;
+
+    handle command ResetCounts;
+  }
+
+  server cluster WiFiNetworkDiagnostics {
+    emits event Disconnection;
+    emits event AssociationFailure;
+    emits event ConnectionStatus;
+    callback attribute bssid;
+    callback attribute securityType;
+    callback attribute wiFiVersion;
+    callback attribute channelNumber;
+    callback attribute rssi;
+    callback attribute beaconLostCount;
+    callback attribute beaconRxCount;
+    callback attribute packetMulticastRxCount;
+    callback attribute packetMulticastTxCount;
+    callback attribute packetUnicastRxCount;
+    callback attribute packetUnicastTxCount;
+    callback attribute currentMaxRate;
+    callback attribute overrunCount;
+
+    handle command ResetCounts;
+  }
+
+  server cluster EthernetNetworkDiagnostics {
+    callback attribute PHYRate;
+    callback attribute fullDuplex;
+    callback attribute packetRxCount;
+    callback attribute packetTxCount;
+    callback attribute txErrCount;
+    callback attribute collisionCount;
+    callback attribute overrunCount;
+    callback attribute carrierDetect;
+    callback attribute timeSinceReset;
+
+    handle command ResetCounts;
+  }
+
+  server cluster TimeSynchronization {
+    emits event DSTTableEmpty;
+    emits event DSTStatus;
+    emits event TimeZoneStatus;
+    emits event TimeFailure;
+    emits event MissingTrustedTimeSource;
+    callback attribute UTCTime;
+    callback attribute granularity;
+    callback attribute timeSource default = 0x00;
+    callback attribute trustedTimeSource;
+    callback attribute defaultNTP;
+    callback attribute timeZone;
+    callback attribute DSTOffset;
+    callback attribute localTime;
+    callback attribute timeZoneDatabase default = 2;
+    callback attribute NTPServerAvailable default = 0;
+    callback attribute timeZoneListMaxSize;
+    callback attribute DSTOffsetListMaxSize;
+    callback attribute supportsDNSResolve default = 0;
+
+    handle command SetUTCTime;
+    handle command SetTrustedTimeSource;
+    handle command SetTimeZone;
+    handle command SetTimeZoneResponse;
+    handle command SetDSTOffset;
+    handle command SetDefaultNTP;
+  }
+
   server cluster Switch {
     emits event SwitchLatched;
     emits event InitialPress;
@@ -11167,6 +11162,55 @@ endpoint 1 {
     callback attribute multiPressMax;
   }
 
+  server cluster AdministratorCommissioning {
+    callback attribute windowStatus;
+    callback attribute adminFabricIndex;
+    callback attribute adminVendorId;
+
+    handle command OpenCommissioningWindow;
+    handle command OpenBasicCommissioningWindow;
+    handle command RevokeCommissioning;
+  }
+
+  server cluster OperationalCredentials {
+    callback attribute NOCs;
+    callback attribute fabrics;
+    callback attribute supportedFabrics;
+    callback attribute commissionedFabrics;
+    callback attribute trustedRootCertificates;
+    callback attribute currentFabricIndex;
+
+    handle command AttestationRequest;
+    handle command AttestationResponse;
+    handle command CertificateChainRequest;
+    handle command CertificateChainResponse;
+    handle command CSRRequest;
+    handle command CSRResponse;
+    handle command AddNOC;
+    handle command UpdateNOC;
+    handle command NOCResponse;
+    handle command UpdateFabricLabel;
+    handle command RemoveFabric;
+    handle command AddTrustedRootCertificate;
+    handle command SetVIDVerificationStatement;
+    handle command SignVIDVerificationRequest;
+    handle command SignVIDVerificationResponse;
+  }
+
+  server cluster GroupKeyManagement {
+    callback attribute groupKeyMap;
+    callback attribute groupTable;
+    callback attribute maxGroupsPerFabric;
+    callback attribute maxGroupKeysPerFabric;
+
+    handle command KeySetWrite;
+    handle command KeySetRead;
+    handle command KeySetReadResponse;
+    handle command KeySetRemove;
+    handle command KeySetReadAllIndices;
+    handle command KeySetReadAllIndicesResponse;
+  }
+
   server cluster FixedLabel {
     callback attribute labelList;
   }
@@ -11178,6 +11222,23 @@ endpoint 1 {
   server cluster BooleanState {
     emits event StateChange;
     callback attribute stateValue;
+  }
+
+  server cluster IcdManagement {
+    callback attribute idleModeDuration;
+    callback attribute activeModeDuration;
+    callback attribute activeModeThreshold;
+    callback attribute registeredClients;
+    callback attribute ICDCounter;
+    callback attribute clientsSupportedPerFabric;
+    callback attribute userActiveModeTriggerHint default = 0x00000000;
+    callback attribute userActiveModeTriggerInstruction;
+    callback attribute operatingMode;
+    callback attribute maximumCheckInBackOff;
+
+    handle command RegisterClientResponse;
+    handle command StayActiveRequest;
+    handle command StayActiveResponse;
   }
 
   server cluster OvenCavityOperationalState {

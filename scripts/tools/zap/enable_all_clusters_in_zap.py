@@ -1,11 +1,21 @@
 #!/usr/bin/env python3
 """Rewrite all-clusters-app.zap so every server cluster known to the
-branch's ZAP catalog is enabled on EP1, with all attributes/commands/events
-turned on. EP0 (root node) is preserved verbatim from the input file so the
-existing root-only cluster set keeps building. EP2..EP65534 are dropped.
+branch's ZAP catalog is enabled on a single endpoint (EP0), with all
+attributes/commands/events turned on. EP1..EP65534 are dropped.
 
-This is for fuzz coverage — we want maximum SDK code reachable in the
-host all-clusters-app target binary. Embedded targets won't fit the result.
+Single-endpoint design rationale: the SDK has build-time static_asserts
+in the "MUST be on endpoint 0" direction (Groupcast, BasicInformation,
+GeneralCommissioning, AdministratorCommissioning) but none in the
+"MUST NOT be on endpoint 0" direction. Putting everything on EP0 is
+buildable and simplifies fuzz reproducers — every cluster is reachable
+through one endpoint id.
+
+Existing client-side clusters on EP0 (e.g., the OTA Software Update
+Provider binding) are preserved untouched. Every server cluster found
+in the catalog is enabled fresh — any prior partial enablement is
+overwritten.
+
+This is for fuzz coverage; embedded targets won't fit the result.
 
 Usage:
     python3 scripts/tools/zap/enable_all_clusters_in_zap.py
@@ -16,49 +26,16 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
+import re
 import sys
 import xml.etree.ElementTree as ET
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 
 DEFAULT_ZAP = REPO_ROOT / "examples/all-clusters-app/all-clusters-common/all-clusters-app.zap"
 DEFAULT_ZCL = REPO_ROOT / "src/app/zap-templates/zcl/zcl-with-test-extensions.json"
-
-# Spec-mandated root-only clusters. EP1 will not include these — they live
-# only on EP0 (preserved from the input file). Anything else from the catalog
-# may appear on EP1, even if it also appears on EP0 (e.g. Descriptor, which
-# every endpoint must carry).
-EP0_ONLY_CLUSTER_IDS: set[int] = {
-    0x001F,  # Access Control
-    0x0028,  # Basic Information
-    0x0029,  # OTA Software Update Provider (client-side)
-    0x002A,  # OTA Software Update Requestor
-    0x002B,  # Localization Configuration
-    0x002C,  # Time Format Localization
-    0x002D,  # Unit Localization
-    0x002E,  # Power Source Configuration
-    0x0030,  # General Commissioning
-    0x0031,  # Network Commissioning
-    0x0032,  # Diagnostic Logs
-    0x0033,  # General Diagnostics
-    0x0034,  # Software Diagnostics
-    0x0035,  # Thread Network Diagnostics
-    0x0036,  # Wi-Fi Network Diagnostics
-    0x0037,  # Ethernet Network Diagnostics
-    0x0038,  # Time Synchronization
-    0x003C,  # Administrator Commissioning
-    0x003E,  # Operational Credentials
-    0x003F,  # Group Key Management
-    0x0046,  # ICD Management
-    # Groupcast: CodegenIntegration.cpp asserts the cluster, if present,
-    # MUST live on the root endpoint. Excluding from EP1 leaves count=0
-    # which satisfies the assert.
-    0x0065,
-}
 
 # Clusters the build can't currently coexist with the rest. Start empty and
 # grow this on each compile failure with a one-line reason.
@@ -88,6 +65,10 @@ DEFAULT_SKIP: set[int] = {
     # Unit Testing (mfg-specific test cluster, code 0xFFF1FC05): many test
     # commands lack callbacks in the all-clusters-app glue.
     0xFFF1FC05,
+    # Groupcast: src/app/clusters/groupcast/CodegenIntegration.cpp calls
+    # gServer.Create() with no args, but GroupcastCluster's only ctor takes
+    # BitFlags<Feature>. Upstream bug — disable until fixed.
+    0x0065,
 }
 
 # Per-cluster command codes to skip even if the cluster itself stays. Use
@@ -97,6 +78,9 @@ SKIP_COMMANDS_BY_CLUSTER: dict[int, set[int]] = {
     # Level Control: MoveToClosestFrequency (FQ feature) has no callback in
     # the host all-clusters-app — skip just that command.
     0x0008: {0x08},
+    # ICD Management: RegisterClient / UnregisterClient ember callbacks are
+    # not provided by the host glue. Other ICD commands work.
+    0x0046: {0x00, 0x02},
 }
 
 
@@ -109,8 +93,6 @@ class ClusterDef:
     code: int
     name: str
     define: str
-    has_server: bool = False
-    has_client: bool = False
     # keyed by (side, code) so server/client extensions don't collide
     attributes: dict[tuple[str, int], dict] = field(default_factory=dict)
     commands: dict[tuple[str, int], dict] = field(default_factory=dict)
@@ -133,6 +115,42 @@ def load_xml_files(zcl_json: Path) -> list[Path]:
     return files
 
 
+_INTEGER_RE = re.compile(r"-?(\d+|0x[0-9a-fA-F]+)")
+
+
+def safe_default_value(raw: str | None) -> str | None:
+    """Map an XML default into something MatterIDL_Server.zapt + the matter-idl
+    parser can both consume.
+
+    The IDL grammar (matter_grammar.lark:97) accepts:
+        default = (integer | ESCAPED_STRING | bool_default)
+    where integer is `-?\\d+` or `-?0x[0-9a-f]+`, bool_default is true/false,
+    and ESCAPED_STRING is a quoted string.
+
+    The renderer template (MatterIDL_Server.zapt:46) only adds quotes for
+    string-typed attributes. For a non-string-typed attribute (int, enum,
+    bool) the renderer emits `defaultValue` bare. So:
+      * integer/bool literals must be stored bare so the renderer emits
+        them bare and the parser reads them as `integer`/`bool_default`.
+      * Symbolic values (e.g., "Unknown") would render unquoted and break
+        the parser. Wrapping them in literal quote chars makes the renderer
+        emit `default = "Unknown"`, which the parser accepts as
+        ESCAPED_STRING. The C++ codegen sees a string default for a
+        non-string type and emits ZAP_EMPTY_DEFAULT() — same as nulling —
+        but the original spec intent stays in the .matter as documentation.
+    """
+    if raw is None:
+        return None
+    s = raw.strip()
+    if s == "":
+        return ""
+    if s.lower() in ("true", "false"):
+        return s.lower()
+    if _INTEGER_RE.fullmatch(s):
+        return s
+    return f'"{s}"'
+
+
 def attr_xml_to_zap(a: ET.Element) -> dict:
     return {
         "name": a.attrib.get("name") or (a.text or "").strip(),
@@ -144,7 +162,7 @@ def attr_xml_to_zap(a: ET.Element) -> dict:
         "storageOption": "External",
         "singleton": 0,
         "bounded": 0,
-        "defaultValue": a.attrib.get("default") if "default" in a.attrib else None,
+        "defaultValue": safe_default_value(a.attrib.get("default")),
         "reportable": 1,
         "minInterval": 1,
         "maxInterval": 65534,
@@ -231,18 +249,11 @@ def collect_cluster_catalog(xml_files: list[Path]) -> dict[int, ClusterDef]:
             code = parse_code(code_text.strip())
             name = (cl.findtext("name") or "").strip()
             define = (cl.findtext("define") or "").strip()
-            side_elem = cl.find("server")  # not used by these XMLs
-            # The cluster itself doesn't have a side attr — the cluster XML
-            # always represents one cluster definition. Side per element comes
-            # from each attribute/command/event's own attribs (defaulting
-            # server). Treat the cluster definition as both-sides for catalog
-            # purposes; we'll only emit server entries for EP1 below.
             c = catalog.setdefault(code, ClusterDef(code=code, name=name, define=define))
             if not c.name:
                 c.name = name
             if not c.define:
                 c.define = define
-            c.has_server = True  # cluster definitions list both sides via element attribs
             merge_into(c, "server", cl)
 
     # Second pass: extensions.
@@ -262,7 +273,7 @@ def collect_cluster_catalog(xml_files: list[Path]) -> dict[int, ClusterDef]:
     return catalog
 
 
-def build_ep1_cluster_entry(c: ClusterDef) -> dict:
+def build_full_cluster_entry(c: ClusterDef) -> dict:
     server_attrs = sorted(
         (a for k, a in c.attributes.items() if k[0] == "server"),
         key=lambda a: a["code"],
@@ -299,81 +310,50 @@ def rewrite_zap(zap_path: Path, zcl_json: Path, skip: set[int], dry_run: bool) -
     catalog = collect_cluster_catalog(xml_files)
     print(f"catalog: {len(catalog)} clusters")
 
-    # Preserve EP0 exactly. The existing endpointTypes[0] is EP0's type.
     if not zap["endpointTypes"]:
         sys.exit("input zap has no endpointTypes")
-    ep0_type = zap["endpointTypes"][0]
-    ep0_cluster_codes = {c["code"] for c in ep0_type["clusters"]}
 
-    # Take EP1 metadata from existing endpointTypes[1] if present, otherwise
-    # synthesize a minimal MA-onofflight type.
-    if len(zap["endpointTypes"]) >= 2:
-        ep1_type = json.loads(json.dumps(zap["endpointTypes"][1]))
-    else:
-        ep1_type = {
-            "id": 2,
-            "name": "MA-onofflight",
-            "deviceTypeRef": {
-                "code": 256, "profileId": 259, "label": "MA-onofflight",
-                "name": "MA-onofflight", "deviceTypeOrder": 0,
-            },
-            "deviceTypes": [{
-                "code": 256, "profileId": 259, "label": "MA-onofflight",
-                "name": "MA-onofflight", "deviceTypeOrder": 0,
-            }],
-            "deviceVersions": [1],
-            "deviceIdentifiers": [256],
-            "deviceTypeName": "MA-onofflight",
-            "deviceTypeCode": 256,
-            "deviceTypeProfileId": 259,
-            "clusters": [],
-        }
+    # Take all metadata (deviceTypeRef, deviceTypes, deviceVersions, etc.)
+    # from the existing endpointTypes[0] so commissioning-relevant fields
+    # stay correct. Only the cluster set is replaced.
+    ep0_type = json.loads(json.dumps(zap["endpointTypes"][0]))
 
-    new_ep1_clusters: list[dict] = []
-    included: list[str] = []
-    skipped_root: list[str] = []
+    # Carry client-side cluster entries forward (e.g., OTA Software Update
+    # Provider, which the all-clusters-app uses as a client to bind to a
+    # remote provider). Server-side entries are dropped — every server
+    # cluster is rebuilt from the catalog with full enablement.
+    preserved_clients = [c for c in ep0_type["clusters"] if c.get("side") == "client"]
+
+    rebuilt_servers: list[dict] = []
     skipped_user: list[str] = []
     skipped_empty: list[str] = []
     for code in sorted(catalog):
         cdef = catalog[code]
-        if code in EP0_ONLY_CLUSTER_IDS:
-            skipped_root.append(f"{code:#06x} {cdef.name}")
-            continue
         if code in skip:
             skipped_user.append(f"{code:#06x} {cdef.name}")
             continue
         if not (cdef.attributes or cdef.commands or cdef.events):
             skipped_empty.append(f"{code:#06x} {cdef.name}")
             continue
-        new_ep1_clusters.append(build_ep1_cluster_entry(cdef))
-        included.append(f"{code:#06x} {cdef.name}")
+        rebuilt_servers.append(build_full_cluster_entry(cdef))
 
-    ep1_type["clusters"] = new_ep1_clusters
+    ep0_type["clusters"] = preserved_clients + rebuilt_servers
 
-    # Replace endpointTypes with [EP0, EP1] and endpoints with [0, 1].
-    zap["endpointTypes"] = [ep0_type, ep1_type]
+    # Single endpoint at id 0. Drop EP1+ entirely.
+    zap["endpointTypes"] = [ep0_type]
     zap["endpoints"] = [
         {
             "endpointTypeName": ep0_type.get("name", "MA-rootdevice"),
             "endpointTypeIndex": 0,
-            "profileId": 259,
+            "profileId": ep0_type.get("deviceTypeProfileId", 259),
             "endpointId": 0,
-            "networkId": 0,
-            "parentEndpointIdentifier": None,
-        },
-        {
-            "endpointTypeName": ep1_type.get("name", "MA-onofflight"),
-            "endpointTypeIndex": 1,
-            "profileId": 259,
-            "endpointId": 1,
             "networkId": 0,
             "parentEndpointIdentifier": None,
         },
     ]
 
-    print(f"EP0 preserved: {len(ep0_cluster_codes)} clusters")
-    print(f"EP1 rebuilt: {len(new_ep1_clusters)} clusters")
-    print(f"  root-only excluded: {len(skipped_root)}")
+    print(f"EP0 rebuilt: {len(rebuilt_servers)} server clusters + "
+          f"{len(preserved_clients)} client clusters preserved")
     if skipped_user:
         print(f"  user --skip: {len(skipped_user)} -> {skipped_user}")
     if skipped_empty:
@@ -395,7 +375,7 @@ def main() -> int:
     ap.add_argument("--zcl", type=Path, default=DEFAULT_ZCL)
     ap.add_argument(
         "--skip", default="",
-        help="comma-separated cluster ids (hex or decimal) to exclude from EP1",
+        help="comma-separated cluster ids (hex or decimal) to exclude",
     )
     ap.add_argument("--dry-run", action="store_true")
     args = ap.parse_args()

@@ -2,16 +2,18 @@
 
 `scripts/tools/zap/enable_all_clusters_in_zap.py` rewrites
 `examples/all-clusters-app/all-clusters-common/all-clusters-app.zap` so
-every server cluster known to this branch's ZAP catalog is enabled on
-endpoint 1, with all attributes / commands / events turned on. It is
-intended for fuzzing the host all-clusters-app binary — embedded targets
-do not have the flash to fit the result.
+every server cluster known to this branch's ZAP catalog is enabled on a
+single endpoint (EP0), with all attributes / commands / events turned on.
+EP1..EP65534 are dropped. It is intended for fuzzing the host
+all-clusters-app binary — embedded targets do not have the flash to fit
+the result.
 
 This document covers:
 1. The data flow from cluster XML → `.zap` → `.matter` → C++ → linked binary.
 2. Where the ground truth for clusters / attributes / commands / events lives.
 3. How the script enables them, and what it deliberately omits.
-4. How to verify nothing was missed silently, and where each failure mode
+4. How attribute default values are normalised between XML and IDL.
+5. How to verify nothing was missed silently, and where each failure mode
    would surface.
 
 ---
@@ -26,10 +28,10 @@ src/app/zap-templates/zcl/data-model/{chip,test}/*.xml
         │  (per-cluster definitions: attributes, commands, events)
         ▼
 [enable_all_clusters_in_zap.py]
-        │  reads the XMLs, rewrites EP1 of the .zap file
+        │  reads the XMLs, rebuilds EP0's cluster set in the .zap file
         ▼
 examples/all-clusters-app/all-clusters-common/all-clusters-app.zap
-        │  (configured endpoints/clusters/attrs/cmds/events)
+        │  (one endpoint with every cluster enabled)
         ▼
 [scripts/tools/zap/generate.py + ZAP source build]
         │  matter-idl-server.json template renders Clusters.matter
@@ -79,8 +81,7 @@ variant, not the plain `zcl.json`. The two differ in:
 The script's `--zcl` flag defaults to `zcl-with-test-extensions.json`
 **because that is what the input .zap declares as its package**. Using
 `zcl.json` instead would produce a smaller catalog that disagrees with
-what ZAP itself uses to render the `.matter` file — leading to subtle
-"why is X missing in .matter?" surprises later.
+what ZAP itself uses to render the `.matter` file.
 
 The two relevant fields in the JSON:
 - `xmlRoot` — list of directories searched for each XML file. Currently
@@ -125,19 +126,19 @@ Each XML is the **single source of truth for one cluster's surface**:
 ```
 
 Notes about the schema:
-- The `<code>` element on `<cluster>` is the cluster ID. Hex literals are
-  allowed (`0x001F`).
+- The `<code>` element on `<cluster>` is the cluster ID. Hex literals
+  (`0x001F`) are allowed.
 - `<attribute>`, `<command>`, `<event>` carry their codes as **XML
   attributes** (`code="0x0000"`), not child elements.
-- Each attribute / command / event has an explicit `side` (`"server"` or
-  `"client"`). Most cluster XMLs only declare one side.
+- Each attribute / command / event has an explicit `side` (`"server"`
+  or `"client"`).
 - A `<configurator>` may also contain `<clusterExtension code="0xXXXX">`
   blocks — these layer additional attributes/commands/events onto a
   cluster defined elsewhere. `clusters-extensions.xml` and
   `mode-select-extensions.xml` use this.
 - Manufacturer-specific cluster IDs and element IDs use a 32-bit code
   with the upper 16 bits set to a vendor ID (e.g., `0xFFF1FC05` =
-  `vendor 0xFFF1` + `id 0xFC05`). The script treats any **element**
+  vendor `0xFFF1` + id `0xFC05`). The script treats any **element**
   (attribute / command / event) code `> 0xFFFF` as mfg-specific and
   skips it. Mfg-specific *clusters* (whole-cluster code `> 0xFFFF`,
   e.g. `Fault Injection 0xFFF1FC06`) are still included if their
@@ -154,8 +155,7 @@ cluster, and imports each dir's `app_config_dependent_sources.gni` to
 pull in extra source files.
 
 There are two valid shapes for the value list:
-- `[]` — no per-cluster sources are needed (typically simple
-  measurement clusters whose attributes are pure ember storage).
+- `[]` — no per-cluster sources are needed.
 - `["dirname"]` or `["dirname", "another"]` — one or more source
   directories under `src/app/clusters/`.
 
@@ -213,7 +213,7 @@ empirically against the input file before rewriting):
       "included": 1,
       "storageOption": "External",  // see §3.4
       "singleton": 0, "bounded": 0,
-      "defaultValue": <string|null>,
+      "defaultValue": <string|null>,  // see §4
       "reportable": 1, "minInterval": 1, "maxInterval": 65534,
       "reportableChange": 0
   } ],
@@ -232,142 +232,110 @@ empirically against the input file before rewriting):
 
 These fields and defaults were chosen by reading what ZAP's GUI emits
 for the existing all-clusters-app entries — not from documentation.
-The script reproduces the same shape so that any subsequent
-edit-and-save in the ZAP GUI produces a no-op diff.
 
 ---
 
 ## 3. How the script enables everything
 
-### 3.1 Endpoint partition
+### 3.1 Single endpoint
 
 The Matter spec splits clusters into "root-node-only" (must live on
-endpoint 0) and "anywhere else". The script encodes the split as:
+endpoint 0) and "anywhere else", but the SDK enforces only the
+"must be on EP0" half via build-time `static_assert` (Groupcast,
+BasicInformation, GeneralCommissioning, AdministratorCommissioning).
+A grep across `src/app/clusters/` finds **zero** asserts in the
+opposite direction. So the simplest possible layout — one endpoint
+with everything on it — is buildable, and each cluster is reachable
+through one endpoint id, simplifying fuzz reproducers.
 
-- **EP0 — preserved verbatim.** The script reads `endpointTypes[0]`
-  from the input file and writes it back unchanged. This keeps the
-  exact root-endpoint configuration that already builds (28 clusters
-  in v1.5: Descriptor, Binding, AccessControl, BasicInformation, the
-  full diagnostic family, Operational Credentials, GroupKeyManagement,
-  ICDManagement, plus a few extras the existing app declares like
-  Power Source, Fixed/User Label, Relative Humidity, Fault Injection).
-- **EP1 — rebuilt from the catalog.** Every cluster in the catalog
-  whose code is **not** in `EP0_ONLY_CLUSTER_IDS` and **not** in
-  `DEFAULT_SKIP ∪ --skip` is added with all attributes, commands and
-  events, server side.
-- **EP2..EP65534 — dropped.** The original file has duplicate light
-  endpoints, generic switches, and a "secondary network interface"
-  endpoint. None of them add fuzz coverage beyond what EP1 already
-  exercises, and they make the result bigger / slower to load.
+The script does:
+- **EP0**: keeps the existing `endpointTypes[0]` metadata
+  (`deviceTypeRef`, `deviceTypes`, `deviceVersions`, `deviceIdentifiers`,
+  etc.) so commissioning-relevant fields stay correct. Existing
+  *client*-side clusters on EP0 (the OTA Software Update Provider
+  binding) are preserved verbatim. Existing *server* clusters are
+  discarded and replaced with fresh fully-enabled entries from the
+  catalog.
+- **EP1..EP65534**: dropped entirely. The original file's secondary
+  light, generic switches, and anonymous network-interface endpoints
+  add no fuzz coverage that EP0's full catalog doesn't already give.
+- `endpoints[]` is rewritten to a single entry: `endpointId: 0`,
+  `endpointTypeIndex: 0`.
 
-`endpoints[]` is rewritten to two entries (id 0 → typeIndex 0, id 1 →
-typeIndex 1), inheriting `profileId` and other fields from the original
-shape.
+### 3.2 Skip lists
 
-### 3.2 EP0_ONLY_CLUSTER_IDS
+`DEFAULT_SKIP` records clusters that the build can't currently coexist
+with (each entry has a one-line reason). Iteration loop: build, read
+the failure, add the cluster code with a comment, re-run. Currently:
 
-The list is the set of clusters the spec requires (or strongly
-recommends) to live only on the root endpoint:
+| Code | Cluster | Reason |
+| ---- | ------- | ------ |
+| 0x0039 | Bridged Device Basic Information | missing `KeepActiveCallback` |
+| 0x0047 | Timer | no impl dir on this branch |
+| 0x0065 | Groupcast | upstream `gServer.Create()` lacks required `BitFlags<Feature>` arg |
+| 0x0079 | Water Tank Level Monitoring | not in `zap_cluster_list.json` |
+| 0x050F | Content Control | missing several block-window callbacks |
+| 0x0551 | Camera AV Stream Management | missing PluginServerInit / ClusterInit / ClusterShutdown |
+| 0x0554 | WebRTC Transport Requestor | missing PluginServerInit |
+| 0x0752 | Joint Fabric Datastore | missing many callbacks |
+| 0xFFF1FC05 | Unit Testing | many test command callbacks missing in app glue |
 
-| Code   | Cluster                          |
-| ------ | -------------------------------- |
-| 0x001F | Access Control                   |
-| 0x0028 | Basic Information                |
-| 0x0029 | OTA Software Update Provider     |
-| 0x002A | OTA Software Update Requestor    |
-| 0x002B | Localization Configuration       |
-| 0x002C | Time Format Localization         |
-| 0x002D | Unit Localization                |
-| 0x002E | Power Source Configuration       |
-| 0x0030 | General Commissioning            |
-| 0x0031 | Network Commissioning            |
-| 0x0032 | Diagnostic Logs                  |
-| 0x0033 | General Diagnostics              |
-| 0x0034 | Software Diagnostics             |
-| 0x0035 | Thread Network Diagnostics       |
-| 0x0036 | Wi-Fi Network Diagnostics        |
-| 0x0037 | Ethernet Network Diagnostics     |
-| 0x0038 | Time Synchronization             |
-| 0x003C | Administrator Commissioning      |
-| 0x003E | Operational Credentials          |
-| 0x003F | Group Key Management             |
-| 0x0046 | ICD Management                   |
-| 0x0065 | Groupcast (build-asserted)       |
+`SKIP_COMMANDS_BY_CLUSTER` is the per-command escape hatch when only a
+handful of commands lack callbacks and dropping the whole cluster would
+lose too much coverage:
 
-Groupcast (0x0065) is on the list because
-`src/app/clusters/groupcast/CodegenIntegration.cpp` carries:
-
-```cpp
-static_assert((kGroupcastFixedClusterCount == 0) ||
-              ((kGroupcastFixedClusterCount == 1) &&
-               kFixedClusterConfig[0].endpointNumber == kRootEndpointId),
-              "Groupcast cluster MUST be on endpoint 0");
-```
-
-If we put it on EP1 the build fails. Excluding it from EP1 leaves the
-count at 0, satisfying the assert. Adding it to EP0 (in the preserved
-endpoint type) is also valid, but the existing all-clusters-app does
-not, so we leave it absent.
-
-The list is **not** generated from the device-type XMLs (e.g.,
-`MA-rootnode.xml`); it is hand-curated from the spec and from build
-diagnostics. The trade-off:
-- Generated lists tend to be either too narrow (only mandatory
-  clusters) or too broad (every cluster MA-rootnode tolerates).
-- A hand-curated list documents *why* each cluster is there.
-The cost is that adding a new root-only cluster on a future spec
-revision requires editing this constant.
+| Cluster | Command | Reason |
+| ------- | ------- | ------ |
+| 0x0008 LevelControl | 0x08 MoveToClosestFrequency | FQ feature, no callback in host glue |
+| 0x0046 ICDManagement | 0x00 RegisterClient | callback missing |
+| 0x0046 ICDManagement | 0x02 UnregisterClient | callback missing |
 
 ### 3.3 Reading XML, writing JSON
 
-`collect_cluster_catalog()` runs in two passes over the XML files:
+`collect_cluster_catalog()` runs in two passes:
 
 1. **First pass — clusters.** For each `<cluster>` element, take
    `<code>`, `<name>`, `<define>` to seed a `ClusterDef`, then
    `merge_into(side="server", elem)` consumes every `<attribute>`,
    `<command>`, `<event>` child. Keys in the per-cluster dicts are
-   `(side, code)` so that a later extension cannot accidentally collide
+   `(side, code)` so a later extension cannot accidentally collide
    with an existing element.
-2. **Second pass — extensions.** Re-walks the same files, this time
-   looking for `<clusterExtension code="0xXXXX">`. The matching
-   `ClusterDef` is extended in place. If no matching cluster exists,
-   the script logs a `WARN:` and skips (rather than crashing) — this
-   is how a stale `clusters-extensions.xml` would be flagged.
+2. **Second pass — extensions.** Re-walks the same files looking for
+   `<clusterExtension code="0xXXXX">`. The matching `ClusterDef` is
+   extended in place. A `<clusterExtension>` whose target cluster is
+   not in the catalog logs `WARN:` and is skipped (rather than
+   crashing) — this is how a stale `clusters-extensions.xml` would be
+   flagged.
 
 Several details matter:
 
 - **Side defaulting.** XML elements without an explicit `side` attrib
-  default to `"server"`. `attr_xml_to_zap` etc. encode this in a
-  single place so the JSON always has `side` set.
+  default to `"server"`. The xml-to-zap conversion functions encode
+  this in a single place so the JSON always has `side` set.
 - **`isIncoming`.** On a server cluster, an XML
-  `<command source="client">` is incoming
-  (the server receives it) and `source="server"` is outgoing
-  (a response). `cmd_xml_to_zap` derives this from the XML `source`
-  attribute and the cluster side.
-- **`defaultValue`.** Comes from the XML attribute element's `default`
-  attribute, or `null` if absent. ZAP renders the `null` as a literal
-  default-not-set marker; the build picks an attribute-type-appropriate
-  default at codegen time.
+  `<command source="client">` is incoming (the server receives it) and
+  `source="server"` is outgoing (a response). `cmd_xml_to_zap` derives
+  this from the XML `source` attribute and the cluster side.
 - **Manufacturer-specific filtering.** Inside `merge_into`,
   `is_mfg_specific(code) := code > 0xFFFF` rejects vendor-prefixed
   attribute / command / event ids before they enter the catalog. This
   exists because the codegen for these requires the `.zap` to set
   `mfgCode = 0xFFF1` (or whatever vendor) on each entry, and the C++
-  cluster-objects header doesn't declare an `Commands::FooMfg::DecodableType`
-  struct for them — the generated dispatch table fails to compile.
-  The mode-select `SampleMfgExtensionCommand` is the canonical example.
+  cluster-objects header doesn't declare a
+  `Commands::FooMfg::DecodableType` struct for them — the generated
+  dispatch table fails to compile. The mode-select
+  `SampleMfgExtensionCommand` is the canonical example.
 
 ### 3.4 Why `storageOption: "External"`
 
-Each attribute in the .zap must declare a storage class:
+Each attribute in the .zap declares a storage class:
 - `"RAM"` — value lives in static RAM, ember manages it.
 - `"NVM"` — value lives in non-volatile storage, ember manages it.
 - `"External"` — application provides read/write callbacks; ember calls
   them.
 
 `"External"` is the safest blanket choice for fuzzing because:
-- No static RAM cost is added per attribute, so the binary stays
-  loadable.
+- No static RAM cost is added per attribute.
 - The application's `ExternalAttributeAccessInterface` (or default
   weak implementations) handle every attribute access, returning a
   zero-initialised value if no specific impl is registered.
@@ -375,10 +343,8 @@ Each attribute in the .zap must declare a storage class:
   variable-shaped for `"RAM"` storage and would fail to compile if not
   marked external.
 
-The existing all-clusters-app entries use a mix of `"RAM"` and
-`"External"` — but `"External"` works for everything and keeps the
-script's output uniform. Sticking to one option also makes the script's
-output deterministic across input shapes.
+Sticking to one option keeps the script's output deterministic across
+input shapes.
 
 ### 3.5 Reporting parameters
 
@@ -388,46 +354,139 @@ you tick "reportable" with no other tweaks. They make every attribute
 subscribable (which expands attribute-read code paths reachable by
 fuzz inputs) without requiring per-attribute thought.
 
-### 3.6 Per-command opt-out
+### 3.6 What the script does NOT do
 
-`SKIP_COMMANDS_BY_CLUSTER` lets us drop a single command from a cluster
-without throwing the cluster away. Currently used only for
-`LevelControl::MoveToClosestFrequency` (0x08) — the FQ feature has no
-callback in the host all-clusters-app glue, but every other Level
-Control command does.
-
-### 3.7 What the script does NOT do
-
-- It does not rewrite EP0. The existing root-endpoint configuration is
-  taken as authoritative.
-- It does not enumerate or enable client-side clusters on EP1. Server
-  clusters are what the SDK's command-dispatch fuzzers care about.
+- It does not enumerate or enable client-side clusters from the
+  catalog. The only client-side entry on EP0 is whatever was already
+  in the input `.zap` (typically OTA Software Update Provider).
 - It does not touch `keyValuePairs`, `package`, `creator`, `fileFormat`,
   or `featureLevel` on the .zap. Those are passed through unchanged.
 - It does not edit `zap_cluster_list.json` or any C++ glue. When a
-  build failure points at one of those, the failure is recorded in the
-  script's `DEFAULT_SKIP` list with a one-line reason, and the user
-  decides whether to fix the upstream gap or accept the loss.
+  build failure points at one of those, the failure is recorded in
+  `DEFAULT_SKIP` / `SKIP_COMMANDS_BY_CLUSTER` with a one-line reason,
+  and the user decides whether to fix the upstream gap or accept the
+  loss.
 
 ---
 
-## 4. Verification: did we actually enable everything?
+## 4. Default values: how XML defaults map to IDL defaults
+
+Attribute defaults are the one place where the XML, the `.zap`, the
+matter-idl grammar, and the C++ codegen all see the data slightly
+differently. The script reconciles them in a single function,
+`safe_default_value()`.
+
+### 4.1 What the XML carries
+
+Across all 142 cluster XMLs in v1.5, **368 attributes** declare a
+`default=` in their XML element. The shapes that appear (audited
+mechanically):
+
+| Shape | Count | Example values |
+| ----- | ----- | -------------- |
+| Decimal integer (signed) | 222 | `0`, `1`, `-5`, `100` |
+| Hex integer | 141 | `0x00`, `0x0019`, `0x00000000` |
+| Boolean | 4 | `true`, `false` |
+| Symbolic enum name | 1 | `Unknown` |
+
+The grammar at `scripts/py_matter_idl/matter/idl/matter_grammar.lark:97` is:
+
+```
+default_value: "default" "=" (integer | ESCAPED_STRING | bool_default)
+integer:        positive_integer | "-" positive_integer
+positive_integer: /\d+/ | /0x[0-9a-fA-F]+/
+bool_default:   "true" | "false"
+ESCAPED_STRING                                            // quoted string
+```
+
+So the parser will accept any decimal/hex integer (signed),
+`true`/`false`, or a quoted string — but **not** an unquoted symbolic
+identifier like `Unknown`.
+
+### 4.2 What the renderer template does
+
+`src/app/zap-templates/templates/app/MatterIDL_Server.zapt:46` is the
+Handlebars template that turns each `.zap` attribute into one line of
+the `.matter` IDL:
+
+```
+default = {{#if (isString type)}}"{{defaultValue}}"{{else}}{{defaultValue}}{{/if}}
+```
+
+The renderer only auto-adds quotes for *string-typed* attributes
+(`char_string`, etc.). For an `int8u`, `enum8`, or `boolean` attribute,
+it emits `defaultValue` **bare**. So the script gets to choose:
+- Store `"defaultValue": "0"` → renderer emits `default = 0` →
+  parser reads as `integer`, codegen uses 0 as a real numeric default.
+- Store `"defaultValue": "Unknown"` → renderer emits
+  `default = Unknown` → parser **fails** with `UnexpectedCharacters`.
+- Store `"defaultValue": "\"Unknown\""` (literal quote chars in the
+  string) → renderer emits `default = "Unknown"` → parser reads as
+  `ESCAPED_STRING`. The C++ codegen sees a string default for a
+  non-string type and emits `ZAP_EMPTY_DEFAULT()` — same as if the
+  default was nulled — but the original spec intent is preserved in
+  the `.matter` as documentation.
+
+### 4.3 What `safe_default_value()` does
+
+```python
+_INTEGER_RE = re.compile(r"-?(\d+|0x[0-9a-fA-F]+)")
+
+def safe_default_value(raw):
+    if raw is None: return None
+    s = raw.strip()
+    if s == "":                          return ""
+    if s.lower() in ("true", "false"):   return s.lower()
+    if _INTEGER_RE.fullmatch(s):         return s
+    return f'"{s}"'                       # quote-on-fail
+```
+
+Mapping for the four shapes seen in the corpus:
+
+| XML default | Stored in .zap | Rendered .matter line | C++ effect |
+| ----------- | -------------- | --------------------- | ---------- |
+| `0` (int) | `"0"` | `default = 0` | numeric default 0 |
+| `0x0019` (hex) | `"0x0019"` | `default = 0x0019` | numeric default 25 |
+| `true` (bool) | `"true"` | `default = true` | bool default true |
+| `Unknown` (enum) | `"\"Unknown\""` | `default = "Unknown"` | `ZAP_EMPTY_DEFAULT()` |
+
+The integer regex matches the grammar exactly (`-?(\d+|0x[0-9a-fA-F]+)`),
+so anything that *would* be a valid integer literal stays bare; anything
+else gets quoted. The fallout is documented loss-of-information for
+symbolic enum defaults — the C++ falls back to zero-init, which for
+`UpdateState=Unknown` happens to be the same value the spec intends
+(`Unknown == 0`). For other future symbolic defaults, the same fallback
+applies; the `.matter` carries the original intent for human readers.
+
+### 4.4 Why this is mostly decorative anyway
+
+`storageOption: "External"` short-circuits the static default at runtime.
+The C++ static cluster table's default is read only when no
+`ExternalAttributeAccessInterface` is registered for that attribute;
+the all-clusters-app does register one (or relies on the weak default
+that returns zero), so attribute reads route through callbacks and the
+default in the static table is observable only briefly during init.
+For fuzz coverage the value of the default doesn't matter at all — the
+fuzzer mutates inputs anyway.
+
+---
+
+## 5. Verification: did we actually enable everything?
 
 The strongest answer is operational, not declarative: each layer of the
 pipeline reports what it sees, and the layers check each other.
 
-### 4.1 Script self-report
+### 5.1 Script self-report
 
-Running the script prints a partition summary:
+Running the script prints a summary:
 
 ```
 loaded 142 XML files from zcl-with-test-extensions.json
 catalog: 142 clusters
-EP0 preserved: 28 clusters
-EP1 rebuilt: 108 clusters
-  root-only excluded: 22
-  user --skip: 8 -> ['0x0039 Bridged Device Basic Information',
+EP0 rebuilt: 129 server clusters + 1 client clusters preserved
+  user --skip: 9 -> ['0x0039 Bridged Device Basic Information',
                      '0x0047 Timer',
+                     '0x0065 Groupcast',
                      '0x0079 Water Tank Level Monitoring',
                      '0x050f Content Control',
                      '0x0551 Camera AV Stream Management',
@@ -440,7 +499,7 @@ EP1 rebuilt: 108 clusters
                                        '0x0044 Proxy Valid']
 ```
 
-The arithmetic is `EP1 + root-only-excluded + user-skip + empty = catalog`.
+The arithmetic is `EP0 server count + user-skip + empty == catalog size`.
 Any cluster that disappeared silently would break this identity, which
 is why each excluded bucket is listed by code and name.
 
@@ -452,22 +511,20 @@ The script also logs `WARN:` for:
 
 These are normally silent; if they fire, the catalog is incomplete.
 
-### 4.2 Cross-check the .zap with ZAP itself
+### 5.2 Cross-check the .zap with ZAP itself
 
-`scripts/tools/zap/generate.py <path>` runs the real ZAP CLI against the
-rewritten file. If the .zap is malformed, ZAP rejects it with a JSON
-schema or feature-level error before any C++ codegen runs. If a
+`scripts/tools/zap/generate.py <path>` runs the real ZAP CLI against
+the rewritten file. If the .zap is malformed, ZAP rejects it with a
+JSON schema or feature-level error before any C++ codegen runs. If a
 referenced cluster id, attribute id, command id, or event id does not
 exist in the catalog ZAP loads, ZAP errors out with a missing-symbol
 message. Successful generation produces:
 
 - `examples/all-clusters-app/all-clusters-common/all-clusters-app.matter`
   — refreshed IDL.
-- A tempdir of generated files (then discarded by `generate.py` after
-  diffing).
 
-ZAP also emits **structural warnings** that you can grep for, even on
-success. Example seen in this experiment:
+ZAP also emits structural warnings that you can grep for, even on
+success. Example:
 
 ```
 Application has missing response commands for enabled commands as follows:
@@ -476,11 +533,10 @@ Application has missing response commands for enabled commands as follows:
     the response to the enabled outgoing command: QueryImage.
 ```
 
-Such warnings are pre-existing for the EP0 configuration we preserved;
-treat them as "things ZAP would complain about regardless of our
-script". A *new* warning after a script change should be investigated.
+A *new* warning after a script change should be investigated; existing
+ones for preserved client clusters can be ignored.
 
-### 4.3 Cross-check `.matter` against the .zap
+### 5.3 Cross-check `.matter` against the .zap
 
 The `.matter` file is a typed IDL — every cluster, attribute, command,
 event mentioned in it must be in the .zap. After running the script:
@@ -504,26 +560,24 @@ for et in z['endpointTypes']:
     print(et['name'], 'server clusters:', s)
 ```
 
-For v1.5 this prints `MA-rootdevice 27`, `MA-onofflight 108`. The
-`108` should match the script's `EP1 rebuilt: 108 clusters` line.
+This should match the script's `EP0 rebuilt: N server clusters` line.
 
-### 4.4 Cross-check at build time
+### 5.4 Cross-check at build time
 
-Three failure modes are caught here, and the diagnostics tell you which:
+Six failure modes are caught here, and the diagnostics tell you which:
 
 1. **Cluster define not in `zap_cluster_list.json`.**
    `gn gen` raises:
    `Unhandled server cluster: XXX_CLUSTER (hint: add to src/app/zap_cluster_list.json)`.
    Either add the cluster to the JSON (with the right
    `src/app/clusters/<dir>` value) or add the cluster code to the
-   script's `DEFAULT_SKIP`. We hit this with `WATER_TANK_LEVEL_MONITORING`.
+   script's `DEFAULT_SKIP`.
 
 2. **Cluster mapped to a non-existent dir.**
    `gn gen` raises:
    `Unable to load ".../src/app/clusters/<dir>/app_config_dependent_sources.gni"`.
    The fix is one of: correct the JSON path, create the missing dir, or
-   skip the cluster. We hit this with the `groupcast-server`
-   typo (real dir is `groupcast`) and with `timer-server` (no dir at all).
+   skip the cluster.
 
 3. **`.gni` exists but does not declare the variable.**
    `gn gen` raises:
@@ -531,12 +585,15 @@ Three failure modes are caught here, and the diagnostics tell you which:
    The cluster's `app_config_dependent_sources.gni` is missing its
    `app_config_dependent_sources = [...]` line. Add the declaration
    (`= []` if the source_set in BUILD.gn supplies all sources).
-   We hit this with `webrtc-transport-requestor-server`.
 
 4. **Static asserts about endpoint placement.**
    These compile-time errors carry an explicit message:
-   `Groupcast cluster MUST be on endpoint 0`. The fix is to add the
-   cluster to `EP0_ONLY_CLUSTER_IDS`.
+   `Groupcast cluster MUST be on endpoint 0`. With the single-endpoint
+   layout these are normally satisfied automatically (everything is on
+   EP0), but a cluster's CodegenIntegration could still fail in the
+   constructor (e.g., Groupcast itself: `gServer.Create()` requires a
+   `BitFlags<Feature>` arg the integration doesn't pass) — those land
+   in `DEFAULT_SKIP`.
 
 5. **Codegen produces references to nonexistent cluster-objects.**
    Compilation errors like:
@@ -555,17 +612,15 @@ Three failure modes are caught here, and the diagnostics tell you which:
    - Skip the cluster (`DEFAULT_SKIP |= {0x...}`).
 
    For `MatterXxxPluginServerInitCallback` / `ClusterInitCallback` /
-   `ClusterShutdownCallback`, the cluster lacks the per-endpoint
-   lifecycle hooks; in practice this means the cluster needs its
-   server-cluster-style glue or else it should be skipped. We hit
-   this with Camera AV Stream Management and WebRTC Transport
-   Requestor.
+   `ClusterShutdownCallback`, the cluster lacks per-endpoint lifecycle
+   hooks; in practice this means the cluster needs its
+   server-cluster-style glue or else it should be skipped.
 
 The build's exit code is non-zero on any of these, so a green build is
 the strongest single signal that the rewriter's output is consistent
 with the rest of the SDK.
 
-### 4.5 Counting at the binary level
+### 5.5 Counting at the binary level
 
 After a successful build, you can read back what the binary actually
 declares:
@@ -582,35 +637,21 @@ For a fuzz harness the second number is the most directly useful — it
 is a lower bound on the number of distinct command-dispatch entry
 points the fuzzer can reach.
 
-### 4.6 Smoke test
-
-```bash
-out/darwin-arm64-all-clusters-clang-no-ble-no-wifi-no-thread/chip-all-clusters-app \
-    --version
-```
-
-`chip-all-clusters-app` self-tests the static cluster list at startup
-when run with `--print-clusters` (or equivalent — the exact flag varies
-by branch). On v1.5, just letting it boot to the "ready for
-commissioning" log line confirms that every static-init for every
-enabled cluster ran without aborting.
-
-### 4.7 What you cannot detect this way
+### 5.6 What you cannot detect this way
 
 Some omissions are silent and require inspection:
 
 - **Optional commands / attributes / events that the cluster XML does
   not declare at all.** The catalog only knows what the XML knows. If
   the spec defines an attribute that nobody wrote into the XML, the
-  script cannot enable it. Cross-check against `data_model/1.5/`
-  (the spec extract) if you suspect this. (The two sources are not
-  synchronised — `data_model/1.5/clusters/*.xml` is a *spec PDF
-  extract* used by other tooling, not the ZAP catalog.)
+  script cannot enable it. (The two sources are not synchronised:
+  `data_model/1.5/clusters/*.xml` is a separate spec PDF extract used
+  by other tooling, not the ZAP catalog.)
 - **Behavioural correctness of the enabled callbacks.** The build
   proves a callback is *linked*, not that it does anything sensible.
-  Most callbacks in the all-clusters-app are stub responders that
-  return success; that is fine for fuzz coverage, but do not assume
-  a green binary implements correct cluster semantics.
+  Most callbacks in the all-clusters-app are stub responders; that is
+  fine for fuzz coverage, but do not assume a green binary implements
+  correct cluster semantics.
 - **Endpoint composition rules.** The Matter spec restricts which
   device types may declare which clusters. Putting Light Sensor on the
   same endpoint as Microwave Oven Control is odd, but as long as no
@@ -619,10 +660,11 @@ Some omissions are silent and require inspection:
 
 ---
 
-## 5. Reproducing on v1.4 / v1.6
+## 6. Reproducing on v1.4 / v1.6
 
 The script is not pinned to v1.5. It only depends on:
-- The `.zap` file having a parseable `endpointTypes[0]` to preserve.
+- The `.zap` file having a parseable `endpointTypes[0]` to take metadata
+  and client clusters from.
 - The `zcl.json` (or `-with-test-extensions.json`) being a valid
   package descriptor that points at a directory of cluster XMLs.
 
@@ -630,7 +672,7 @@ Both v1.4 and v1.6 carry the same descriptor + per-cluster XML layout.
 What differs across branches:
 - The set of cluster XMLs (new clusters added, old ones removed).
 - The set of clusters in `zap_cluster_list.json` and which dirs exist.
-- The set of clusters whose static_asserts demand a specific endpoint.
+- The set of clusters whose CodegenIntegration is incomplete.
 - The set of clusters whose ember callbacks are missing.
 
 So the workflow is:
@@ -644,15 +686,14 @@ python3 scripts/tools/zap/generate.py \
     --target darwin-arm64-all-clusters-clang-no-ble-no-wifi-no-thread build
 ```
 
-Iterate `DEFAULT_SKIP`, `EP0_ONLY_CLUSTER_IDS`, and
-`SKIP_COMMANDS_BY_CLUSTER` based on the build output until the link
-succeeds. Each entry should record *why* it is on the list (typo, no
-impl dir, static_assert, missing callback) so the next branch upgrade
-can revisit.
+Iterate `DEFAULT_SKIP` and `SKIP_COMMANDS_BY_CLUSTER` based on the build
+output until the link succeeds. Each entry should record *why* it is on
+the list (typo, no impl dir, missing callback) so the next branch
+upgrade can revisit.
 
 ---
 
-## 6. File reference
+## 7. File reference
 
 | Path | Role |
 | ---- | ---- |
@@ -662,6 +703,8 @@ can revisit.
 | `src/app/zap-templates/zcl/zcl-with-test-extensions.json` | Catalog index. |
 | `src/app/zap-templates/zcl/data-model/chip/*.xml` | Cluster definitions. |
 | `src/app/zap-templates/zcl/data-model/test/*.xml` | Test-only extensions. |
+| `src/app/zap-templates/templates/app/MatterIDL_Server.zapt` | Renders `.zap` → `.matter` (line 46 controls default-quoting). |
+| `scripts/py_matter_idl/matter/idl/matter_grammar.lark` | IDL grammar (line 97 = default value rule). |
 | `src/app/zap_cluster_list.json` | Cluster define → source dir map. |
 | `src/app/chip_data_model.gni` | GN code that consumes the .zap and the cluster list. |
 | `src/app/clusters/<name>/app_config_dependent_sources.gni` | Per-cluster source list pulled into the chip_data_model target. |
@@ -671,20 +714,25 @@ can revisit.
 
 ---
 
-## 7. Summary
+## 8. Summary
 
 - **Ground truth**: `zcl-with-test-extensions.json` enumerates the XML
   files; each XML is the source of truth for one cluster's surface.
-- **Enablement**: the script reads every XML in the catalog, builds an
-  in-memory cluster table, preserves EP0, replaces EP1 with every
-  non-root cluster (server side, all elements, all reportable), and
-  drops EP2+.
-- **Coverage check**: the script prints catalog size, EP1 size, and
-  every excluded code by category. Their sum equals the catalog size.
+- **Layout**: single endpoint (EP0). Existing client clusters preserved;
+  every catalog server cluster rebuilt fresh with full enablement.
+  No build-time assert prohibits clusters from EP0, so this is the
+  simplest layout that covers the catalog.
+- **Default values**: integer/bool literals stored bare so they render
+  as IDL literals; symbolic values (e.g., enum names) wrapped in quote
+  characters so they render as IDL `ESCAPED_STRING` and the C++ codegen
+  silently falls back to `ZAP_EMPTY_DEFAULT()` while the `.matter`
+  preserves the original intent.
+- **Coverage check**: the script prints catalog size, EP0 cluster count,
+  and every excluded code by category. Their sum equals the catalog size.
 - **Failure detection**: ZAP rejects malformed .zap files; `gn gen`
   rejects missing cluster-list mappings or .gni declarations;
   C++ compilation rejects missing struct shapes; the linker rejects
-  missing callbacks and init hooks. A successful build is therefore
-  a strong end-to-end check that every enabled element has a matching
-  implementation; a failed build's first error tells you which
-  layer disagrees.
+  missing callbacks and init hooks. A successful build is therefore a
+  strong end-to-end check that every enabled element has a matching
+  implementation; a failed build's first error tells you which layer
+  disagrees.
