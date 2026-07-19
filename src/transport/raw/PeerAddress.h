@@ -58,7 +58,9 @@ enum class Type : uint8_t
     kNfc,
     kThreadMeshcop,
     kProxy,         // Virtual transport: packets tunnelled through ProxyMessageRequest/Response IM commands
-    kLast = kProxy, // This is not an actual transport type, it just refers to the last transport type
+    kFakeOperational, // Renode emulation only: operational CHIP messages over a socket byte-pipe
+                      // (no UDP/Thread/DNS-SD). See src/transport/raw/FakeOperational.h.
+    kLast = kFakeOperational, // This is not an actual transport type, it just refers to the last transport type
 };
 
 /**
@@ -185,6 +187,9 @@ public:
             break;
         case Type::kNfc:
             snprintf(buf, bufSize, "NFC:%d", mId.mNFCShortId);
+            break;
+        case Type::kFakeOperational:
+            snprintf(buf, bufSize, "FAKE-OP");
             break;
         case Type::kThreadMeshcop:
             mIPAddress.ToString(ip_addr);

@@ -26,6 +26,11 @@ static_library("raw") {
 
   sources = [
     "Base.h",
+    # Renode emulation transport: compiled unconditionally but dormant unless it
+    # is registered into a TransportMgr tuple (gated by
+    # CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT) and its platform send is registered.
+    "FakeOperational.cpp",
+    "FakeOperational.h",
     "GroupcastTesting.cpp",
     "GroupcastTesting.h",
     "MessageHeader.cpp",

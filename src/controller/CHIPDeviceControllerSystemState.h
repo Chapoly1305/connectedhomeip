@@ -60,8 +60,10 @@
 #include <transport/raw/NFC.h>
 #endif
 #include <transport/raw/ProxyTransport.h>
-
 #include <type_traits>
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+#include <transport/raw/FakeOperational.h>
+#endif
 
 namespace chip {
 
@@ -104,6 +106,10 @@ using DeviceTransportMgr = TransportMgr<
 #endif
     ,
     Transport::Proxy<> /* Proxy: tunnels commissioning packets via ProxyMessageRequest */
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+    ,
+    Transport::FakeOperational /* Renode emulation only: operational CHIP over a byte-pipe */
+#endif
     >;
 
 /**
@@ -129,7 +135,7 @@ constexpr size_t kDeviceProxyTransportIndex = 1 /* IPv6 UDP */
 #if CHIP_DEVICE_CONFIG_ENABLE_NFC_BASED_COMMISSIONING
     + 1 /* NFC */
 #endif
-    ; /* Proxy<> is last */
+    ; /* Proxy<> precedes the optional FakeOperational transport. */
 
 /**
  * Compile-time check that the hand-maintained index above still names Proxy<>.  Without

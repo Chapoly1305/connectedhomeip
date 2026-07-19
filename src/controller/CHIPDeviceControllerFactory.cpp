@@ -41,6 +41,10 @@
 #include <protocols/secure_channel/CASEServer.h>
 #include <protocols/secure_channel/SimpleSessionResumptionStorage.h>
 
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+#include <transport/raw/FakeOperational.h>
+#endif
+
 using namespace chip::Inet;
 using namespace chip::System;
 using namespace chip::Credentials;
@@ -214,6 +218,11 @@ CHIP_ERROR DeviceControllerFactory::InitSystemState(FactoryInitParams params)
 #endif
                                                             ,
                                                         Transport::ProxyListenParameters(stateParams.systemLayer)));
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+                                                            ,
+                                                        Transport::FakeOperationalListenParameters()
+#endif
+                                                            );
 
     // TODO(#16231): All the new'ed state above/below in this method is never properly released or null-checked!
     stateParams.sessionMgr                = chip::Platform::New<SessionManager>();
