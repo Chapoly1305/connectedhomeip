@@ -622,6 +622,18 @@
 #endif
 
 /**
+ * CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
+ *
+ * Renode test harness only: drive CHIPoBLE over a software byte-stream transport instead of the
+ * platform's real BLE stack, so commissioning can be exercised against firmware running inside
+ * the Renode emulator. See src/platform/silabs/efr32/FakeBLETransport.cpp (device) and
+ * src/platform/Linux/ble/FakeBleTransport.cpp (chip-tool).
+ */
+#ifndef CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
+#define CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT 0
+#endif
+
+/**
  * CHIP_DEVICE_CONFIG_SINGLE_CHIPOBLE_CONNECTION
  *
  * Limit support for chip-over-BLE (CHIPoBLE) to a single connection.

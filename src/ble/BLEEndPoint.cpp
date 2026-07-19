@@ -50,7 +50,7 @@
 #include "BtpEngine.h"
 
 // Define below to enable extremely verbose, BLE end point-specific debug logging.
-#undef CHIP_BLE_END_POINT_DEBUG_LOGGING_ENABLED
+#define CHIP_BLE_END_POINT_DEBUG_LOGGING_ENABLED 1
 
 #ifdef CHIP_BLE_END_POINT_DEBUG_LOGGING_ENABLED
 #define ChipLogDebugBleEndPoint(MOD, MSG, ...) ChipLogDetail(MOD, MSG, ##__VA_ARGS__)
