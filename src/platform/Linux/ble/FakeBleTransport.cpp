@@ -34,7 +34,7 @@
 #include <platform/PlatformManager.h>
 
 #if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
-#include <transport/raw/FakeOperational.h>
+#include <transport/raw/FakeOperational.h> // nogncheck
 #endif
 
 namespace chip {
