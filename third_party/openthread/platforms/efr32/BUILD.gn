@@ -21,6 +21,17 @@ import("//build_overrides/openthread.gni")
 import("${silabs_sdk_build_root}/efr32_sdk.gni")
 import("${silabs_sdk_build_root}/silabs_board.gni")
 
+declare_args() {
+  # Renode "null radio": swap the real RAIL-backed radio.cpp for a benign fake
+  # (radio_fake.cpp) that never touches RAIL. With no RX ever delivered,
+  # OpenThread's MLE attach times out and the device self-promotes to Leader,
+  # forming a single-node Thread network. For emulation only -- do NOT enable
+  # for real hardware. The sibling radio_*.cpp files in this source_set are
+  # still compiled; radio_fake.cpp only replaces radio.cpp and additionally
+  # provides the handful of radio.cpp-internal helpers those siblings call.
+  chip_enable_fake_thread_radio = false
+}
+
 config("openthread_efr32_config") {
   defines = [
     "RADIO_CONFIG_DMP_SUPPORT=1",
@@ -80,10 +91,16 @@ source_set("libopenthread-efr32") {
     "${sl_ot_efr32_root}/sleep.c",
     "${sl_ot_efr32_root}/soft_source_match_table.c",
     "${sl_ot_efr32_root}/system.c",
-
-    # Temporary file until the files in the SI SDK is fixed
-    "${matter_support_root}/sdk-copies/openthread/platform-abstraction/efr32/radio.cpp",
   ]
+
+  # Temporary file until the files in the SI SDK is fixed.
+  # Under the Renode "null radio" flag, swap it for radio_fake.cpp (see the
+  # chip_enable_fake_thread_radio declare_args above).
+  if (chip_enable_fake_thread_radio) {
+    sources += [ "${matter_support_root}/sdk-copies/openthread/platform-abstraction/efr32/radio_fake.cpp" ]
+  } else {
+    sources += [ "${matter_support_root}/sdk-copies/openthread/platform-abstraction/efr32/radio.cpp" ]
+  }
 
   include_dirs = [ "${openthread_root}/examples/platforms/utils" ]
 

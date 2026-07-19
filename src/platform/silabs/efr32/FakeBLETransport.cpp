@@ -125,18 +125,49 @@ constexpr osThreadAttr_t kFakeBleTaskAttr = {
     .priority   = osPriorityHigh,
 };
 
-// Blocking read of exactly `length` bytes. UARTDRV's callback-based Receive() is overkill for a
-// test harness talking to a reliable local socket-backed UART -- poll instead.
+// Completion flag for the non-blocking receive below. Set from the UARTDRV DMA-completion
+// callback (ISR context), cleared before each new receive. `volatile` because it is written
+// from the callback and spun-on from task context.
+volatile bool sFakeBleRxComplete = false;
+
+void FakeBleRxCallback(UARTDRV_Handle_t handle, Ecode_t status, uint8_t * data, UARTDRV_Count_t count)
+{
+    (void) handle;
+    (void) status;
+    (void) data;
+    (void) count;
+    sFakeBleRxComplete = true;
+}
+
+// Blocking read of exactly `length` bytes -- but implemented on top of the NON-blocking
+// UARTDRV_Receive() so the task genuinely SLEEPS (osDelay) while waiting for bytes.
+//
+// The earlier implementation used UARTDRV_ReceiveB() (the *blocking* variant), on the mistaken
+// assumption that under Renode it returns immediately when no bytes are queued. It does NOT:
+// ReceiveB starts a DMA and busy-spins internally on the transfer's remaining-count until all
+// `length` bytes arrive, never yielding. At osPriorityHigh that spin starves the lower-priority
+// OpenThread task (prio 24), so when commissioning reaches ThreadNetworkEnable -- where the
+// device must run OpenThread in the background to attach while chip-tool waits silently for the
+// ConnectNetwork response -- OpenThread never gets CPU, never attaches, and the command times out.
+//
+// With the non-blocking Receive + osDelay(1) poll, this task blocks between polls, so OpenThread
+// (and the Matter event loop) run freely; incoming frames still preempt promptly (this task stays
+// osPriorityHigh) so the EUSART RX FIFO is drained without overflow.
 void BlockingRead(uint8_t * buf, uint16_t length)
 {
-    while (UARTDRV_ReceiveB(sFakeBleUartHandle, buf, static_cast<UARTDRV_Count_t>(length)) != ECODE_EMDRV_UARTDRV_OK)
+    sFakeBleRxComplete = false;
+
+    while (UARTDRV_Receive(sFakeBleUartHandle, buf, static_cast<UARTDRV_Count_t>(length), FakeBleRxCallback) !=
+           ECODE_EMDRV_UARTDRV_OK)
     {
-        // Retry: the fake transport is a test harness, not a real-time path.
-        // Yield so lower-priority tasks can run. This task is osPriorityRealtime6 and under Renode
-        // UARTDRV_ReceiveB returns immediately when no bytes are queued, so without a yield this
-        // busy-poll starves the Matter/CHIP event-loop task -- which must run to dispatch the
-        // CHIPoBLE write we posted and generate the BTP handshake response. Starving it stalls
-        // commissioning at the BLE handshake.
+        // Queue momentarily full/busy -- yield and retry.
+        osDelay(1);
+    }
+
+    while (!sFakeBleRxComplete)
+    {
+        // Sleep while the DMA fills `buf`. This is the critical yield: it lets OpenThread and the
+        // Matter event loop run while no CHIPoBLE bytes are pending.
         osDelay(1);
     }
 }
