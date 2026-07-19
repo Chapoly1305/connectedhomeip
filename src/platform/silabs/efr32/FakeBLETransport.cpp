@@ -111,12 +111,18 @@ constexpr osThreadAttr_t kFakeBleTaskAttr = {
     .cb_size    = osThreadCbSize,
     .stack_mem  = sFakeBleTaskStack,
     .stack_size = kFakeBleTaskStackSize,
-    // Run BELOW the Matter/CHIP task (osPriorityHigh) and OpenThread (24): this task is a low-rate
-    // producer that reads frames and posts events, while the high-priority CHIP event loop is the
-    // consumer that dispatches them and generates BTP/PASE responses. At a high priority its
-    // UARTDRV_ReceiveB busy-poll (UARTDRV_ReceiveB returns immediately under Renode) starves the CHIP
-    // task and commissioning stalls at the BLE handshake.
-    .priority   = osPriorityLow,
+    // Run ABOVE the Matter/CHIP task (osPriorityHigh) and OpenThread (24) so incoming CHIPoBLE frames
+    // -- including the BTP acks chip-tool sends during the crypto-heavy commissioning data phase -- are
+    // read promptly instead of being starved by the busy CHIP event loop. Two earlier failure modes:
+    //   - too HIGH with a tight spin (original osPriorityRealtime6, NO yield): starved the CHIP task and
+    //     PASE stalled at the BLE handshake;
+    //   - too LOW (osPriorityLow): the CHIP task starved THIS task during the data phase, so chip-tool's
+    //     BTP acks were not consumed in time and the device hit "ack recv timeout" and dropped the link.
+    // BlockingRead now yields (osDelay(1)) every poll. Run at the SAME priority as the CHIP task
+    // (osPriorityHigh): each runs its bursts and blocks, so they co-schedule -- the CHIP task is not
+    // preempted during the tight PASE handshake (which a higher priority broke), and this task still
+    // gets serviced whenever the CHIP task is waiting, so chip-tool's data-phase BTP acks are consumed.
+    .priority   = osPriorityHigh,
 };
 
 // Blocking read of exactly `length` bytes. UARTDRV's callback-based Receive() is overkill for a
