@@ -21,6 +21,10 @@
 #include <tracing/macros.h>
 #include <transport/raw/PeerAddress.h>
 
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+#include <transport/raw/FakeOperational.h>
+#endif
+
 namespace chip {
 namespace AddressResolve {
 namespace Impl {
@@ -206,11 +210,36 @@ CHIP_ERROR Resolver::LookupNode(const NodeLookupRequest & request, Impl::NodeLoo
 
     handle.ResetForLookup(mTimeSource.GetMonotonicTimestamp(), request);
     auto & peerId = request.GetPeerId();
+
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+    // Renode emulation only: the emulated single-node Thread device has no border router / SRP / DNS-SD
+    // path the host can reach, so normal operational discovery cannot complete. Short-circuit mDNS and
+    // hand back a static PeerAddress routed to the fake operational transport. Deliver the result
+    // asynchronously on the event loop (not synchronously) because LookupNode is called from inside
+    // OperationalSessionSetup::Connect and a synchronous callback would re-enter it.
+    //
+    // The handle is intentionally NOT added to mActiveLookups: IsActive() stays false, so a subsequent
+    // CancelLookup on this handle is a safe no-op (returns CHIP_ERROR_INVALID_ARGUMENT, which callers
+    // already guard against via IsActive()).
+    {
+        NodeListener * listener = handle.GetListener();
+        VerifyOrReturnError(listener != nullptr, CHIP_ERROR_INCORRECT_STATE);
+        const PeerId capturedPeerId = peerId;
+        ChipLogProgress(Discovery, "Fake operational transport: short-circuiting lookup for " ChipLogFormatPeerId,
+                        ChipLogValuePeerId(capturedPeerId));
+        return mSystemLayer->ScheduleLambda([listener, capturedPeerId] {
+            ResolveResult result;
+            result.address = chip::Transport::PeerAddress(chip::Transport::Type::kFakeOperational);
+            listener->OnNodeAddressResolved(capturedPeerId, result);
+        });
+    }
+#else
     ReturnErrorOnFailure(Dnssd::Resolver::Instance().ResolveNodeId(peerId));
     mActiveLookups.PushBack(&handle);
     ReArmTimer();
     ChipLogProgress(Discovery, "Lookup started for " ChipLogFormatPeerId, ChipLogValuePeerId(peerId));
     return CHIP_NO_ERROR;
+#endif // CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
 }
 
 CHIP_ERROR Resolver::TryNextResult(Impl::NodeLookupHandle & handle)

@@ -26,11 +26,16 @@
 #include <cerrno>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <thread>
 
 #include <lib/support/CodeUtils.h>
 #include <lib/support/logging/CHIPLogging.h>
 #include <platform/PlatformManager.h>
+
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+#include <transport/raw/FakeOperational.h>
+#endif
 
 namespace chip {
 namespace DeviceLayer {
@@ -47,9 +52,16 @@ enum class FrameType : uint8_t
     kSubscribe    = 0x04,
     kUnsubscribe  = 0x05,
     kIndication   = 0x06,
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+    // Operational (post-commissioning) CHIP messages carried over the SAME pipe, demuxed by this
+    // leading type byte. Payloads (CASE Sigma2/3 with certs) can be up to ~1500 bytes, much larger
+    // than BLE fragments -- see kMaxFramePayload below.
+    kOperational = 0x10,
+#endif
 };
 
-constexpr uint16_t kMaxFramePayload = 512;
+// Operational CASE payloads can be up to ~1500 bytes, so the receive buffer must be at least 1536.
+constexpr uint16_t kMaxFramePayload = 1536;
 // The fake transport only ever talks to a single peer; use a fixed non-null connection object.
 // BLE_CONNECTION_OBJECT is a typed pointer (BluezConnection*) on the Linux platform, so use that
 // type directly rather than void* (which does not implicitly convert at the BleLayer call sites).
@@ -59,8 +71,14 @@ int gSocketFd            = -1;
 Ble::BleLayer * gBleLayer = nullptr;
 std::thread * gRxThread   = nullptr;
 
+// Serializes frame writes to the shared socket. The BLE write/indication path and the operational
+// send path (FakeOperationalSend) can both write frames, so guard the two-part [header][payload]
+// write so frames never interleave on the wire.
+std::mutex gWriteMutex;
+
 bool SendFrame(FrameType type, const uint8_t * payload, uint16_t len)
 {
+    std::lock_guard<std::mutex> lock(gWriteMutex);
     if (gSocketFd < 0)
     {
         return false;
@@ -76,6 +94,25 @@ bool SendFrame(FrameType type, const uint8_t * payload, uint16_t len)
     }
     return true;
 }
+
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+// Registered with Transport::FakeOperational::SetPlatformSend(). Frames the raw CHIP operational
+// packet as [0x10][len LE][payload] and writes it to the SAME connected socket the fake-BLE
+// transport uses.
+void FakeOperationalSend(const uint8_t * data, size_t len)
+{
+    if (len > kMaxFramePayload)
+    {
+        ChipLogError(Ble, "FakeBleTransport: operational payload too large (%u > %u)", static_cast<unsigned>(len),
+                     kMaxFramePayload);
+        return;
+    }
+    if (!SendFrame(FrameType::kOperational, data, static_cast<uint16_t>(len)))
+    {
+        ChipLogError(Ble, "FakeBleTransport: failed to send operational frame");
+    }
+}
+#endif // CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
 
 bool BlockingReadExact(uint8_t * buf, size_t length)
 {
@@ -129,6 +166,28 @@ void RxThreadMain()
                     reinterpret_cast<intptr_t>(std::move(buf).UnsafeRelease())));
             }
         }
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+        else if (type == FrameType::kOperational)
+        {
+            System::PacketBufferHandle buf = System::PacketBufferHandle::NewWithData(payload, len, 0, 0);
+            if (!buf.IsNull())
+            {
+                // OnMessageReceived must run on the CHIP event-loop thread with the stack lock; marshal
+                // it there via ScheduleWork rather than calling it from this raw RX thread.
+                LogErrorOnFailure(DeviceLayer::PlatformMgr().ScheduleWork(
+                    [](intptr_t ctx) {
+                        System::PacketBufferHandle b =
+                            System::PacketBufferHandle::Adopt(reinterpret_cast<System::PacketBuffer *>(ctx));
+                        auto * op = Transport::FakeOperational::Instance();
+                        if (op != nullptr)
+                        {
+                            op->OnMessageReceived(std::move(b));
+                        }
+                    },
+                    reinterpret_cast<intptr_t>(std::move(buf).UnsafeRelease())));
+            }
+        }
+#endif // CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
     }
 
     ChipLogProgress(Ble, "FakeBleTransport: peer connection closed");
@@ -190,7 +249,19 @@ void FakeBleConnectionDelegate::NewConnection(Ble::BleLayer * bleLayer, void * a
 
     gSocketFd  = fd;
     gBleLayer  = bleLayer;
-    gRxThread  = new std::thread(RxThreadMain);
+
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+    // Register the operational byte-pipe writer once. The operational transport shares this same
+    // socket, demuxed by the leading frame-type byte.
+    static bool sOperationalSendRegistered = false;
+    if (!sOperationalSendRegistered)
+    {
+        Transport::FakeOperational::SetPlatformSend(&FakeOperationalSend);
+        sOperationalSendRegistered = true;
+    }
+#endif // CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+
+    gRxThread = new std::thread(RxThreadMain);
 
     if (!SendFrame(FrameType::kConnect, nullptr, 0))
     {
@@ -246,12 +317,23 @@ CHIP_ERROR FakeBlePlatformDelegate::UnsubscribeCharacteristic(BLE_CONNECTION_OBJ
 
 CHIP_ERROR FakeBlePlatformDelegate::CloseConnection(BLE_CONNECTION_OBJECT /* connObj */)
 {
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+    // After ThreadNetworkEnable, chip-tool tears down the BLE connection but then needs the
+    // operational transport over the SAME pipe. Keep the underlying socket open (and do not tell the
+    // device to tear down its pipe) so operational CHIP messages can continue to flow. The socket is
+    // kept alive for the process lifetime (or until the peer closes it / the RX thread ends).
+    ChipLogProgress(Ble, "FakeBleTransport: BLE connection closed; keeping socket open for operational transport");
+#else
     SendFrame(FrameType::kDisconnect, nullptr, 0);
-    if (gSocketFd >= 0)
     {
-        close(gSocketFd);
-        gSocketFd = -1;
+        std::lock_guard<std::mutex> lock(gWriteMutex);
+        if (gSocketFd >= 0)
+        {
+            close(gSocketFd);
+            gSocketFd = -1;
+        }
     }
+#endif // CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
     return CHIP_NO_ERROR;
 }
 

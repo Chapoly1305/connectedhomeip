@@ -41,6 +41,10 @@
 #include <protocols/secure_channel/CASEServer.h>
 #include <protocols/secure_channel/SimpleSessionResumptionStorage.h>
 
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+#include <transport/raw/FakeOperational.h>
+#endif
+
 using namespace chip::Inet;
 using namespace chip::System;
 using namespace chip::Credentials;
@@ -209,6 +213,10 @@ CHIP_ERROR DeviceControllerFactory::InitSystemState(FactoryInitParams params)
 #if CHIP_DEVICE_CONFIG_ENABLE_NFC_BASED_COMMISSIONING
                                                             ,
                                                         Transport::NfcListenParameters(nullptr)
+#endif
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+                                                            ,
+                                                        Transport::FakeOperationalListenParameters()
 #endif
                                                             ));
 

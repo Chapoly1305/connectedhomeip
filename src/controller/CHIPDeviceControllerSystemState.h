@@ -59,6 +59,9 @@
 #if CHIP_DEVICE_CONFIG_ENABLE_NFC_BASED_COMMISSIONING
 #include <transport/raw/NFC.h>
 #endif
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+#include <transport/raw/FakeOperational.h>
+#endif
 
 namespace chip {
 
@@ -98,6 +101,10 @@ using DeviceTransportMgr = TransportMgr<
 #if CHIP_DEVICE_CONFIG_ENABLE_NFC_BASED_COMMISSIONING
     ,
     Transport::NFC /* NFC */
+#endif
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+    ,
+    Transport::FakeOperational /* Renode emulation only: operational CHIP over a byte-pipe */
 #endif
     >;
 

@@ -44,6 +44,9 @@
 #include <cmsis_os2.h>
 #include <lib/support/CodeUtils.h>
 #include <lib/support/logging/CHIPLogging.h>
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+#include <transport/raw/FakeOperational.h> // nogncheck
+#endif
 
 using namespace chip::Ble;
 using namespace chip::System;
@@ -69,6 +72,18 @@ enum class FrameType : uint8_t
 };
 
 constexpr uint16_t kMaxFramePayload = 512;
+
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+// Operational frames (CASE Sigma2/3, Invoke) share this pipe under a distinct type byte.
+// They can be much larger than a BLE fragment, so the frame buffer must accommodate a full
+// CHIP message (<= IPv6 MTU-ish). It is file-scope static because it is too large for the
+// FakeBLE task stack (2 KB).
+constexpr uint8_t kFakeOpFrameType    = 0x10;
+constexpr uint16_t kMaxFrameBufSize   = 1536;
+#else
+constexpr uint16_t kMaxFrameBufSize = kMaxFramePayload;
+#endif
+uint8_t sFrameBuf[kMaxFrameBufSize];
 
 // Second UARTDRV instance, hand-instantiated (no SLC-generated config): EUSART1 is unused by
 // every board this test setup targets, and pin routing is irrelevant since this only ever
@@ -172,23 +187,67 @@ void BlockingRead(uint8_t * buf, uint16_t length)
     }
 }
 
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+// Runs on the Matter/CHIP event-loop thread (scheduled from the RX task) so the message is
+// dispatched with the stack lock held, exactly like a UDP packet would be.
+void DeliverFakeOperationalWork(intptr_t arg)
+{
+    auto buf         = System::PacketBufferHandle::Adopt(reinterpret_cast<System::PacketBuffer *>(arg));
+    auto * transport = Transport::FakeOperational::Instance();
+    if (transport != nullptr)
+    {
+        transport->OnMessageReceived(std::move(buf));
+    }
+}
+
+// Called from the RX task: copy a received operational packet into a PacketBuffer and marshal
+// it onto the Matter thread (the RX task is not the Matter thread).
+void DeliverFakeOperational(const uint8_t * data, uint16_t len)
+{
+    System::PacketBufferHandle buf = System::PacketBufferHandle::NewWithData(data, len);
+    VerifyOrReturn(!buf.IsNull(), ChipLogError(DeviceLayer, "FakeOp: OOM on RX (%u bytes)", len));
+    System::PacketBuffer * raw = std::move(buf).UnsafeRelease();
+    TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork(DeliverFakeOperationalWork, reinterpret_cast<intptr_t>(raw));
+}
+
+// Platform byte-pipe writer for the operational transport. Runs on the Matter thread (from
+// SessionManager::SendMessage -> FakeOperational::SendMessage). Frames [0x10][len LE][payload]
+// onto the same EUSART1 pipe that carries the fake-BLE frames.
+void FakeOperationalSend(const uint8_t * data, size_t len)
+{
+    uint8_t header[3];
+    header[0] = kFakeOpFrameType;
+    header[1] = static_cast<uint8_t>(len & 0xFF);
+    header[2] = static_cast<uint8_t>((len >> 8) & 0xFF);
+    UARTDRV_ForceTransmit(sFakeBleUartHandle, header, sizeof(header));
+    UARTDRV_ForceTransmit(sFakeBleUartHandle, const_cast<uint8_t *>(data), static_cast<UARTDRV_Count_t>(len));
+}
+#endif // CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+
 void FakeBLETransportTaskMain(void * arg)
 {
     uint8_t header[3];
-    uint8_t payload[kMaxFramePayload];
 
     while (true)
     {
         BlockingRead(header, sizeof(header));
         uint8_t type   = header[0];
         uint16_t plen  = static_cast<uint16_t>(header[1]) | (static_cast<uint16_t>(header[2]) << 8);
-        VerifyOrDie(plen <= kMaxFramePayload);
+        VerifyOrDie(plen <= sizeof(sFrameBuf));
         if (plen > 0)
         {
-            BlockingRead(payload, plen);
+            BlockingRead(sFrameBuf, plen);
         }
 
-        BLEMgrImpl().FakeBLEHandleFrame(type, payload, plen);
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+        if (type == kFakeOpFrameType)
+        {
+            DeliverFakeOperational(sFrameBuf, plen);
+            continue;
+        }
+#endif
+
+        BLEMgrImpl().FakeBLEHandleFrame(type, sFrameBuf, plen);
     }
 }
 
@@ -202,6 +261,13 @@ void BLEManagerImpl::InitFakeBLETransport(void)
     }
 
     UARTDRV_InitEuart(sFakeBleUartHandle, &sFakeBleUartInit);
+
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+    // Register the byte-pipe writer for the operational transport (its instance is created by
+    // the Matter server's ServerTransportMgr). Both flows share this EUSART1 pipe, demuxed by
+    // the leading frame-type byte (0x10 = operational).
+    Transport::FakeOperational::SetPlatformSend(&FakeOperationalSend);
+#endif
 
     sFakeBleTaskHandle = osThreadNew(FakeBLETransportTaskMain, nullptr, &kFakeBleTaskAttr);
     VerifyOrDie(sFakeBleTaskHandle != nullptr);

@@ -400,6 +400,10 @@ CHIP_ERROR Server::Init(const ServerInitParams & initParams)
                     ,
                 NfcListenParameters(nullptr)
 #endif
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+                    ,
+                chip::Transport::FakeOperationalListenParameters()
+#endif
             );
         },
         [&]() {
@@ -450,6 +454,10 @@ CHIP_ERROR Server::Init(const ServerInitParams & initParams)
 #if CHIP_DEVICE_CONFIG_ENABLE_NFC_BASED_COMMISSIONING
                                ,
                            NfcListenParameters(nullptr)
+#endif
+#if CHIP_ENABLE_FAKE_OPERATIONAL_TRANSPORT
+                           ,
+                           chip::Transport::FakeOperationalListenParameters()
 #endif
     );
 #endif // CHIP_DEVICE_CONFIG_ENABLE_PORT_RETRY
