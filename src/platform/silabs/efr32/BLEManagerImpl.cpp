@@ -328,6 +328,9 @@ uint16_t BLEManagerImpl::GetMTU(BLE_CONNECTION_OBJECT conId) const
 CHIP_ERROR BLEManagerImpl::SendIndication(BLE_CONNECTION_OBJECT conId, const ChipBleUUID * svcId, const ChipBleUUID * charId,
                                           PacketBufferHandle data)
 {
+#if CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
+    return SendFakeIndication(conId, svcId, charId, std::move(data));
+#else
     CHIP_ERROR err              = CHIP_NO_ERROR;
     CHIPoBLEConState * conState = GetConnectionState(conId);
     sl_status_t ret;
@@ -345,6 +348,7 @@ CHIP_ERROR BLEManagerImpl::SendIndication(BLE_CONNECTION_OBJECT conId, const Chi
 
 exit:
     return err;
+#endif // CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
 }
 
 CHIP_ERROR BLEManagerImpl::SendWriteRequest(BLE_CONNECTION_OBJECT conId, const ChipBleUUID * svcId, const ChipBleUUID * charId,
@@ -672,6 +676,9 @@ void BLEManagerImpl::UpdateMtu(volatile sl_bt_msg_t * evt)
 void BLEManagerImpl::HandleBootEvent(void)
 {
     mFlags.Set(Flags::kSiLabsBLEStackInitialize);
+#if CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
+    InitFakeBLETransport();
+#endif
     TEMPORARY_RETURN_IGNORED PlatformMgr().ScheduleWork(DriveBLEState, 0);
 }
 

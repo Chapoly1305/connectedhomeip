@@ -398,13 +398,14 @@ CHIP_ERROR Storage::GetSpake2pIterationCount(uint32_t & value)
 {
     CHIP_ERROR err = SilabsConfig::ReadConfigValue(SilabsConfig::kConfigKey_Spake2pIterationCount, value);
 #if defined(CHIP_DEVICE_CONFIG_USE_TEST_SPAKE2P_ITERATION_COUNT) && CHIP_DEVICE_CONFIG_USE_TEST_SPAKE2P_ITERATION_COUNT
-    if (CHIP_DEVICE_ERROR_CONFIG_NOT_FOUND == err)
-    {
-        value = CHIP_DEVICE_CONFIG_USE_TEST_SPAKE2P_ITERATION_COUNT;
-        err   = CHIP_NO_ERROR;
-    }
-#endif
+    // Renode fake-transport build: NVM3 is unprovisioned, so force the test iteration count so the
+    // salt/verifier/iteration triple stays consistent with passcode 20202021 (see GetSpake2pSalt/Verifier).
+    (void) err;
+    value = CHIP_DEVICE_CONFIG_USE_TEST_SPAKE2P_ITERATION_COUNT;
+    return CHIP_NO_ERROR;
+#else
     return err;
+#endif
 }
 
 CHIP_ERROR Storage::SetSetupPasscode(uint32_t value)
@@ -426,7 +427,19 @@ CHIP_ERROR Storage::SetSpake2pSalt(const char * value, size_t size)
 
 CHIP_ERROR Storage::GetSpake2pSalt(char * value, size_t max, size_t & size)
 {
-    return SilabsConfig::ReadConfigValueStr(SilabsConfig::kConfigKey_Spake2pSalt, value, max, size);
+    CHIP_ERROR err = SilabsConfig::ReadConfigValueStr(SilabsConfig::kConfigKey_Spake2pSalt, value, max, size);
+#if defined(CHIP_DEVICE_CONFIG_USE_TEST_SPAKE2P_SALT)
+    // Renode fake-transport build: NVM3 is unprovisioned, so force the compiled test salt (kept
+    // consistent with the test verifier/iteration count for passcode 20202021).
+    (void) err;
+    static const char kTestSalt[] = CHIP_DEVICE_CONFIG_USE_TEST_SPAKE2P_SALT;
+    size                          = strlen(kTestSalt);
+    VerifyOrReturnError(size <= max, CHIP_ERROR_BUFFER_TOO_SMALL);
+    memcpy(value, kTestSalt, size);
+    return CHIP_NO_ERROR;
+#else
+    return err;
+#endif
 }
 
 CHIP_ERROR Storage::SetSpake2pVerifier(const char * value, size_t size)
@@ -436,7 +449,20 @@ CHIP_ERROR Storage::SetSpake2pVerifier(const char * value, size_t size)
 
 CHIP_ERROR Storage::GetSpake2pVerifier(char * value, size_t max, size_t & size)
 {
-    return SilabsConfig::ReadConfigValueStr(SilabsConfig::kConfigKey_Spake2pVerifier, value, max, size);
+    CHIP_ERROR err = SilabsConfig::ReadConfigValueStr(SilabsConfig::kConfigKey_Spake2pVerifier, value, max, size);
+#if defined(CHIP_DEVICE_CONFIG_USE_TEST_SPAKE2P_VERIFIER)
+    // Renode fake-transport build: NVM3 is unprovisioned, so force the compiled test verifier -- generated
+    // for passcode 20202021 with the test salt/iteration count -- so a host chip-tool using 20202021 can
+    // complete PASE. (Production devices read a real provisioned verifier from NVM3.)
+    (void) err;
+    static const char kTestVerifier[] = CHIP_DEVICE_CONFIG_USE_TEST_SPAKE2P_VERIFIER;
+    size                              = strlen(kTestVerifier);
+    VerifyOrReturnError(size <= max, CHIP_ERROR_BUFFER_TOO_SMALL);
+    memcpy(value, kTestVerifier, size);
+    return CHIP_NO_ERROR;
+#else
+    return err;
+#endif
 }
 
 //

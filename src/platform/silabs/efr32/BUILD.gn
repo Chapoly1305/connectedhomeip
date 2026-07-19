@@ -24,6 +24,12 @@ import("${matter_support_root}/provision/args.gni")
 
 assert(chip_device_platform == "efr32")
 
+declare_args() {
+  # Renode test harness: drive CHIPoBLE from a byte-stream transport on EUSART1 instead of the
+  # real sl_bt stack. See src/platform/silabs/efr32/FakeBLETransport.cpp.
+  chip_enable_fake_ble_transport = false
+}
+
 if (chip_enable_thread) {
   import("//build_overrides/openthread.gni")
 }
@@ -87,6 +93,10 @@ static_library("efr32") {
     ]
   } else {
     sources += [ "BLEManagerImpl.cpp" ]
+    if (chip_enable_fake_ble_transport) {
+      sources += [ "FakeBLETransport.cpp" ]
+      defines = [ "CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT=1" ]
+    }
   }
   deps = [
     "${chip_root}/src/app/common:ids",

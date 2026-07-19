@@ -90,6 +90,10 @@ declare_args() {
   if (chip_enable_wifi && chip_device_config_enable_wifipaf) {
     chip_linux_wifi_paf_manager = "wpa_supplicant"
   }
+
+  # Renode test harness: chip-tool talks a fake byte-stream BLE transport to a device firmware
+  # running inside Renode instead of real BlueZ. See src/platform/Linux/ble/FakeBleTransport.cpp.
+  chip_enable_fake_ble_transport = false
 }
 
 if (chip_enable_thread) {
@@ -180,6 +184,14 @@ static_library("Linux") {
       "bluez/ChipDeviceScanner.h",
       "bluez/Types.h",
     ]
+
+    if (chip_enable_fake_ble_transport) {
+      sources += [
+        "ble/FakeBleTransport.cpp",
+        "ble/FakeBleTransport.h",
+      ]
+      defines = [ "CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT=1" ]
+    }
   }
 
   if (chip_with_trusty_os) {
@@ -272,10 +284,15 @@ static_library("Linux") {
       sources += [ "NetworkCommissioningWiFiDriver.cpp" ]
     }
 
-    defines = [
+    _network_manager_defines = [
       "CHIP_LINUX_NETWORK_MANAGER=\"${chip_linux_network_manager}\"",
       "CHIP_LINUX_WIFI_PAF_MANAGER=\"${chip_linux_wifi_paf_manager}\"",
     ]
+    if (defined(defines)) {
+      defines += _network_manager_defines
+    } else {
+      defines = _network_manager_defines
+    }
 
     if (chip_linux_network_manager == "wpa_supplicant") {
       defines += [ "CHIP_LINUX_NETWORK_MANAGER_WPA_SUPPLICANT=1" ]

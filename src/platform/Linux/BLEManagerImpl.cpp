@@ -44,6 +44,10 @@
 
 #include "bluez/BluezEndpoint.h"
 
+#if CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
+#include "ble/FakeBleTransport.h"
+#endif
+
 #if !CHIP_DEVICE_CONFIG_SUPPORTS_CONCURRENT_CONNECTION
 #include <platform/DeviceControlServer.h>
 #endif
@@ -78,7 +82,20 @@ BLEManagerImpl BLEManagerImpl::sInstance;
 
 CHIP_ERROR BLEManagerImpl::_Init()
 {
-    ReturnErrorOnFailure(BleLayer::Init(this, this, this, &DeviceLayer::SystemLayer()));
+#if CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
+    Optional<uint16_t> fakeBlePort = GetFakeBleTransportPort();
+    if (fakeBlePort.HasValue())
+    {
+        ChipLogProgress(Ble, "Using fake BLE transport on port %u (Renode test harness)", fakeBlePort.Value());
+        static FakeBleConnectionDelegate sFakeConnDelegate(fakeBlePort.Value());
+        static FakeBlePlatformDelegate sFakePlatformDelegate;
+        ReturnErrorOnFailure(BleLayer::Init(&sFakePlatformDelegate, &sFakeConnDelegate, this, &DeviceLayer::SystemLayer()));
+    }
+    else
+#endif // CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
+    {
+        ReturnErrorOnFailure(BleLayer::Init(this, this, this, &DeviceLayer::SystemLayer()));
+    }
 
     mServiceMode = ConnectivityManager::kCHIPoBLEServiceMode_Enabled;
     mFlags.ClearAll().Set(Flags::kAdvertisingEnabled, CHIP_DEVICE_CONFIG_CHIPOBLE_ENABLE_ADVERTISING_AUTOSTART && !mIsCentral);

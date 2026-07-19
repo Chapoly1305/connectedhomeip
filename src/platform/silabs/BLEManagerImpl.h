@@ -74,6 +74,16 @@ public:
     CHIP_ERROR StartAdvertising(void);
     CHIP_ERROR StopAdvertising(void);
 
+#if CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
+    // Renode test harness: drives the CHIPoBLE state machine from a byte-stream transport
+    // (see examples/platform/silabs/efr32/FakeBLETransport.cpp) instead of the real sl_bt stack,
+    // so commissioning can be exercised against firmware running inside the Renode emulator.
+    void InitFakeBLETransport(void);
+    void FakeBLEHandleFrame(uint8_t type, const uint8_t * payload, uint16_t len);
+    CHIP_ERROR SendFakeIndication(BLE_CONNECTION_OBJECT conId, const Ble::ChipBleUUID * svcId, const Ble::ChipBleUUID * charId,
+                                  System::PacketBufferHandle pBuf);
+#endif // CHIP_DEVICE_CONFIG_ENABLE_FAKE_BLE_TRANSPORT
+
 #if CHIP_ENABLE_ADDITIONAL_DATA_ADVERTISING
 #if defined(SLI_SI91X_ENABLE_BLE) && SLI_SI91X_ENABLE_BLE
     static void HandleC3ReadRequest(const SilabsBleWrapper::sl_wfx_msg_t & rsi_ble_read_req);
