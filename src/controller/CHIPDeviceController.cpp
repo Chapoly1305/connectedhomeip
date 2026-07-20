@@ -3919,7 +3919,10 @@ void DeviceCommissioner::PerformCommissioningStep(DeviceProxy * proxy, Commissio
         mSystemState->CASESessionMgr()->FindOrEstablishSession(
             scopedPeerId, &mOnDeviceConnectedCallback, &mOnDeviceConnectionFailureCallback,
 #if CHIP_DEVICE_CONFIG_ENABLE_AUTOMATIC_CASE_RETRIES
-            /* attemptCount = */ 3, &mOnDeviceConnectionRetryCallback,
+            // RENODE: the emulated UDP-over-Thread datapath is lossy (~33-66%/frame), so the fragmented CASE
+            // handshake needs many attempts. Retry up to 60x (was 3) so operational CASE keeps trying across
+            // the extended 900s fail-safe window instead of giving up in ~88s.
+            /* attemptCount = */ 60, &mOnDeviceConnectionRetryCallback,
 #endif // CHIP_DEVICE_CONFIG_ENABLE_AUTOMATIC_CASE_RETRIES
             TransportPayloadCapability::kMRPPayload, mFallbackOperationalResolveResult);
     }

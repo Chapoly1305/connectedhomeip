@@ -667,6 +667,15 @@ CHIP_ERROR AutoCommissioner::StartCommissioning(DeviceCommissioner * commissione
 
 Optional<System::Clock::Timeout> AutoCommissioner::GetCommandTimeout(DeviceProxy * device, CommissioningStage stage) const
 {
+    // RENODE: the emulated UDP-over-Thread datapath is lossy (~33-66%/frame); the operational CASE handshake
+    // needs many retries to punch through. Give the FindOperational steps a long deadline (else the step is
+    // cancelled in ~90s after only ~2 of the 60 CASE attempts).
+    if (stage == CommissioningStage::kFindOperationalForStayActive ||
+        stage == CommissioningStage::kFindOperationalForCommissioningComplete)
+    {
+        return MakeOptional<System::Clock::Timeout>(System::Clock::Seconds16(880));
+    }
+
     // Network clusters can indicate the time required to connect, so if we are
     // connecting, use that time as our "how long it takes to process server
     // side" time.  Otherwise pick a time that should be enough for the command

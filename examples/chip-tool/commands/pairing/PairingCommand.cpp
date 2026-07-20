@@ -184,6 +184,12 @@ CHIP_ERROR PairingCommand::RunInternal(NodeId remoteId)
 CommissioningParameters PairingCommand::GetCommissioningParameters()
 {
     auto params = CommissioningParameters();
+    // RENODE: the emulated UDP-over-Thread datapath is lossy (~33-66%/frame) so the operational CASE
+    // handshake often needs many retries. chip-tool retries CASE only until the fail-safe expires, so arm a
+    // long fail-safe (both the initial and the CASE-phase re-arm) to give operational discovery + CASE a wide
+    // window to punch through. Device firmware stays stock.
+    params.SetFailsafeTimerSeconds(900);
+    params.SetCASEFailsafeTimerSeconds(900);
     params.SetSkipCommissioningComplete(mSkipCommissioningComplete.ValueOr(false));
     if (mBypassAttestationVerifier.ValueOr(false))
     {
