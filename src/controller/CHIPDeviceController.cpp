@@ -3884,6 +3884,19 @@ void DeviceCommissioner::PerformCommissioningStep(DeviceProxy * proxy, Commissio
     }
     break;
     case CommissioningStage::kEvictPreviousCaseSessions: {
+#if CONFIG_NETWORK_LAYER_BLE
+        // RENODE: from here on the operational path (discovery + CASE) runs entirely over Thread; the
+        // BLE/PASE link is no longer needed. On the emulated EFR32 multiprotocol radio a still-open BLE
+        // connection starves the 15.4 (Thread) radio once the device is operational, so operational CASE
+        // can never complete ("commissioning deadlock"). Real commissioners keep BLE until
+        // CommissioningComplete, but here we release it right after network-enable so the device's radio
+        // is free for Thread.
+        if (mSystemState->BleLayer() != nullptr)
+        {
+            ChipLogProgress(Controller, "RENODE: closing BLE after network-enable to free the device 15.4 radio for operational CASE");
+            CloseBleConnection();
+        }
+#endif // CONFIG_NETWORK_LAYER_BLE
         auto scopedPeerId = GetPeerScopedId(proxy->GetDeviceId());
 
         // If we ever had a commissioned device with this node ID before, we may
