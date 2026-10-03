@@ -181,7 +181,7 @@
 	platforms = cc13xx_26xx
 [submodule "third_party/silabs/matter_support"]
 	path = third_party/silabs/matter_support
-	url = https://github.com/SiliconLabsSoftware/matter_support.git
+	url = https://github.com/Chapoly1305/matter_support.git
 	branch = main
 	platforms = silabs,silabs_docker,unit_tests
 [submodule "editline"]
