@@ -29,6 +29,7 @@
 #include "BLEEndPoint.h"
 
 #include <cstdint>
+#include <cstdlib>
 #include <cstring>
 #include <utility>
 
@@ -91,6 +92,37 @@
 
 namespace chip {
 namespace Ble {
+
+namespace {
+
+/**
+ * Resolve a BTP timer duration, allowing it to be overridden at runtime via the named
+ * environment variable. Falls back to @p defaultValueMs if the variable is unset or does not
+ * parse as a positive integer, so behavior is unchanged for every existing deployment/run.
+ *
+ * This exists for test harnesses (e.g. emulated links whose real-world timing does not match
+ * what these constants were tuned for on physical hardware) that need a wider BTP handshake/ack
+ * window without changing the compiled-in default for production builds.
+ */
+uint32_t ResolveBtpTimeoutMs(const char * envVarName, uint32_t defaultValueMs)
+{
+    const char * override_ = getenv(envVarName);
+    if (override_ != nullptr && override_[0] != '\0')
+    {
+        char * end          = nullptr;
+        unsigned long value = strtoul(override_, &end, 10);
+        if (end != nullptr && *end == '\0' && value > 0)
+        {
+            ChipLogProgress(Ble, "%s override: %lu ms (stock default %u ms)", envVarName, value, defaultValueMs);
+            return static_cast<uint32_t>(value);
+        }
+        ChipLogError(Ble, "%s set but not a valid positive integer ('%s'); using stock default %u ms", envVarName, override_,
+                     defaultValueMs);
+    }
+    return defaultValueMs;
+}
+
+} // namespace
 
 CHIP_ERROR BLEEndPoint::StartConnect()
 {
@@ -1321,8 +1353,9 @@ CHIP_ERROR BLEEndPoint::SendIndication(PacketBufferHandle && buf)
 
 CHIP_ERROR BLEEndPoint::StartConnectTimer()
 {
+    const uint32_t timeoutMs = ResolveBtpTimeoutMs("CHIP_BLE_BTP_CONN_RSP_TIMEOUT_MS", BTP_CONN_RSP_TIMEOUT_MS);
     const CHIP_ERROR timerErr =
-        mBle->mSystemLayer->StartTimer(System::Clock::Milliseconds32(BTP_CONN_RSP_TIMEOUT_MS), HandleConnectTimeout, this);
+        mBle->mSystemLayer->StartTimer(System::Clock::Milliseconds32(timeoutMs), HandleConnectTimeout, this);
     ReturnErrorOnFailure(timerErr);
     mTimerStateFlags.Set(TimerStateFlag::kConnectTimerRunning);
 
@@ -1331,8 +1364,9 @@ CHIP_ERROR BLEEndPoint::StartConnectTimer()
 
 CHIP_ERROR BLEEndPoint::StartReceiveConnectionTimer()
 {
-    const CHIP_ERROR timerErr = mBle->mSystemLayer->StartTimer(System::Clock::Milliseconds32(BTP_CONN_RSP_TIMEOUT_MS),
-                                                               HandleReceiveConnectionTimeout, this);
+    const uint32_t timeoutMs = ResolveBtpTimeoutMs("CHIP_BLE_BTP_CONN_RSP_TIMEOUT_MS", BTP_CONN_RSP_TIMEOUT_MS);
+    const CHIP_ERROR timerErr =
+        mBle->mSystemLayer->StartTimer(System::Clock::Milliseconds32(timeoutMs), HandleReceiveConnectionTimeout, this);
     ReturnErrorOnFailure(timerErr);
     mTimerStateFlags.Set(TimerStateFlag::kReceiveConnectionTimerRunning);
 
@@ -1343,8 +1377,9 @@ CHIP_ERROR BLEEndPoint::StartAckReceivedTimer()
 {
     if (!mTimerStateFlags.Has(TimerStateFlag::kAckReceivedTimerRunning))
     {
+        const uint32_t timeoutMs = ResolveBtpTimeoutMs("CHIP_BLE_BTP_ACK_TIMEOUT_MS", BTP_ACK_TIMEOUT_MS);
         const CHIP_ERROR timerErr =
-            mBle->mSystemLayer->StartTimer(System::Clock::Milliseconds32(BTP_ACK_TIMEOUT_MS), HandleAckReceivedTimeout, this);
+            mBle->mSystemLayer->StartTimer(System::Clock::Milliseconds32(timeoutMs), HandleAckReceivedTimeout, this);
         ReturnErrorOnFailure(timerErr);
 
         mTimerStateFlags.Set(TimerStateFlag::kAckReceivedTimerRunning);

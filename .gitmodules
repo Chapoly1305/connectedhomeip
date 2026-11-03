@@ -26,13 +26,13 @@
 	branch  = main
 [submodule "openthread"]
 	path = third_party/openthread/repo
-	url = https://github.com/openthread/openthread.git
-	branch  = main
+	url = https://github.com/Chapoly1305/openthread.git
+	branch = renode/mle-fast-attach
 	recursive = true
 [submodule "ot-br-posix"]
 	path = third_party/ot-br-posix/repo
-	url = https://github.com/openthread/ot-br-posix.git
-	branch  = main
+	url = https://github.com/Chapoly1305/ot-br-posix.git
+	branch = renode/mle-fast-attach
 	platforms = linux
 [submodule "cirque"]
 	path = third_party/cirque/repo

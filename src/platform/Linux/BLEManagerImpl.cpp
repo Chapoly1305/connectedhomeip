@@ -32,6 +32,7 @@
  *       platform/<PLATFORM>/BLEManagerImpl.h after defining interface class. */
 #include "platform/internal/BLEManager.h"
 
+#include <cstdlib>
 #include <type_traits>
 #include <utility>
 
@@ -61,8 +62,42 @@ namespace Internal {
 
 namespace {
 
-static constexpr System::Clock::Timeout kNewConnectionScanTimeout = System::Clock::Seconds16(20);
-static constexpr System::Clock::Timeout kConnectTimeout           = System::Clock::Seconds16(20);
+static constexpr System::Clock::Timeout kNewConnectionScanTimeoutDefault = System::Clock::Seconds16(20);
+static constexpr System::Clock::Timeout kConnectTimeoutDefault           = System::Clock::Seconds16(20);
+
+// Resolve a BLE scan/connect timeout, allowing an override via the named environment variable
+// (value in milliseconds). Falls back to defaultTimeout when the variable is unset or invalid, so
+// stock behavior is unchanged unless a run explicitly opts in. Intended for test harnesses (e.g.
+// emulated links) whose real-world timing does not match what these constants assume on physical
+// hardware; not meant to be set for normal operation.
+System::Clock::Timeout ResolveBleTimeout(const char * envVarName, System::Clock::Timeout defaultTimeout)
+{
+    const char * override_ = getenv(envVarName);
+    if (override_ != nullptr && override_[0] != '\0')
+    {
+        char * end          = nullptr;
+        unsigned long value = strtoul(override_, &end, 10);
+        if (end != nullptr && *end == '\0' && value > 0)
+        {
+            ChipLogProgress(Ble, "%s override: %lu ms (stock default %u ms)", envVarName, value,
+                             static_cast<unsigned>(defaultTimeout.count()));
+            return System::Clock::Milliseconds32(static_cast<uint32_t>(value));
+        }
+        ChipLogError(Ble, "%s set but not a valid positive integer ('%s'); using stock default", envVarName, override_);
+    }
+    return defaultTimeout;
+}
+
+System::Clock::Timeout GetNewConnectionScanTimeout()
+{
+    return ResolveBleTimeout("CHIP_BLE_SCAN_CONNECT_TIMEOUT_MS", kNewConnectionScanTimeoutDefault);
+}
+
+System::Clock::Timeout GetConnectTimeout()
+{
+    return ResolveBleTimeout("CHIP_BLE_GATT_CONNECT_TIMEOUT_MS", kConnectTimeoutDefault);
+}
+
 static constexpr System::Clock::Timeout kFastAdvertiseTimeout =
     System::Clock::Milliseconds32(CHIP_DEVICE_CONFIG_BLE_ADVERTISING_INTERVAL_CHANGE_TIME);
 #if CHIP_DEVICE_CONFIG_EXT_ADVERTISING
@@ -711,7 +746,7 @@ void BLEManagerImpl::InitiateScan(BleScanState scanType)
         ChipLogError(Ble, "Failed to start BLE scan: %" CHIP_ERROR_FORMAT, err.Format());
     });
 
-    err = DeviceLayer::SystemLayer().StartTimer(kNewConnectionScanTimeout, HandleScanTimer, this);
+    err = DeviceLayer::SystemLayer().StartTimer(GetNewConnectionScanTimeout(), HandleScanTimer, this);
     VerifyOrExit(err == CHIP_NO_ERROR, {
         mBLEScanConfig.mBleScanState = BleScanState::kNotScanning;
         TEMPORARY_RETURN_IGNORED mDeviceScanner.StopScan();
@@ -871,7 +906,7 @@ void BLEManagerImpl::OnDeviceScanned(BluezDevice1 & device, const chip::Ble::Chi
     DeviceLayer::SystemLayer().CancelTimer(HandleScanTimer, this);
     TEMPORARY_RETURN_IGNORED mDeviceScanner.StopScan();
     // Stop scanning and then start connecting timer
-    TEMPORARY_RETURN_IGNORED DeviceLayer::SystemLayer().StartTimer(kConnectTimeout, HandleConnectTimer, this);
+    TEMPORARY_RETURN_IGNORED DeviceLayer::SystemLayer().StartTimer(GetConnectTimeout(), HandleConnectTimer, this);
     chip::DeviceLayer::PlatformMgr().UnlockChipStack();
 
     ReturnAndLogOnFailure(mEndpoint.ConnectDevice(device), Ble, "Device connection failed");
