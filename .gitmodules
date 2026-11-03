@@ -34,6 +34,7 @@
 	url = https://github.com/Chapoly1305/ot-br-posix.git
 	branch = renode/mle-fast-attach
 	platforms = linux
+	recursive = true
 [submodule "cirque"]
 	path = third_party/cirque/repo
 	url = https://github.com/openweave/cirque.git
