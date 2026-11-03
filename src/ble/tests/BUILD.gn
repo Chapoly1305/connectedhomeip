@@ -24,6 +24,7 @@ chip_test_suite("tests") {
     "TestBleEndPoint.cpp",
     "TestBleErrorStr.cpp",
     "TestBleLayer.cpp",
+    "TestBleTimeout.cpp",
     "TestBleUUID.cpp",
     "TestBtpEngine.cpp",
   ]

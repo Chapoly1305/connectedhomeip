@@ -37,6 +37,7 @@
 #include <utility>
 
 #include <ble/Ble.h>
+#include <ble/BleTimeout.h>
 #include <lib/support/CHIPMemString.h>
 #include <lib/support/CodeUtils.h>
 #include <lib/support/SafeInt.h>
@@ -75,13 +76,12 @@ System::Clock::Timeout ResolveBleTimeout(const char * envVarName, System::Clock:
     const char * override_ = getenv(envVarName);
     if (override_ != nullptr && override_[0] != '\0')
     {
-        char * end          = nullptr;
-        unsigned long value = strtoul(override_, &end, 10);
-        if (end != nullptr && *end == '\0' && value > 0)
+        uint32_t value = 0;
+        if (Ble::ParseBleTimeoutMs(override_, value))
         {
-            ChipLogProgress(Ble, "%s override: %lu ms (stock default %u ms)", envVarName, value,
-                             static_cast<unsigned>(defaultTimeout.count()));
-            return System::Clock::Milliseconds32(static_cast<uint32_t>(value));
+            ChipLogProgress(Ble, "%s override: %u ms (stock default %u ms)", envVarName, static_cast<unsigned>(value),
+                            static_cast<unsigned>(defaultTimeout.count()));
+            return System::Clock::Milliseconds32(value);
         }
         ChipLogError(Ble, "%s set but not a valid positive integer ('%s'); using stock default", envVarName, override_);
     }

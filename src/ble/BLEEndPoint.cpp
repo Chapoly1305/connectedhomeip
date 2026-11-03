@@ -27,6 +27,7 @@
 
 #define _CHIP_BLE_BLE_H
 #include "BLEEndPoint.h"
+#include "BleTimeout.h"
 
 #include <cstdint>
 #include <cstdlib>
@@ -109,12 +110,12 @@ uint32_t ResolveBtpTimeoutMs(const char * envVarName, uint32_t defaultValueMs)
     const char * override_ = getenv(envVarName);
     if (override_ != nullptr && override_[0] != '\0')
     {
-        char * end          = nullptr;
-        unsigned long value = strtoul(override_, &end, 10);
-        if (end != nullptr && *end == '\0' && value > 0)
+        uint32_t value = 0;
+        if (ParseBleTimeoutMs(override_, value))
         {
-            ChipLogProgress(Ble, "%s override: %lu ms (stock default %u ms)", envVarName, value, defaultValueMs);
-            return static_cast<uint32_t>(value);
+            ChipLogProgress(Ble, "%s override: %u ms (stock default %u ms)", envVarName, static_cast<unsigned>(value),
+                            defaultValueMs);
+            return value;
         }
         ChipLogError(Ble, "%s set but not a valid positive integer ('%s'); using stock default %u ms", envVarName, override_,
                      defaultValueMs);

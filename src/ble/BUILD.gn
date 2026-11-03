@@ -73,6 +73,7 @@ if (chip_config_network_layer_ble) {
       "BleLayerDelegate.h",
       "BlePlatformDelegate.h",
       "BleRole.h",
+      "BleTimeout.h",
       "BleUUID.cpp",
       "BleUUID.h",
       "BtpEngine.cpp",
