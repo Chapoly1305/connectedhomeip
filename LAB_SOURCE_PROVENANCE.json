@@ -1,0 +1,26 @@
+{
+  "purpose": "Reconstructed exact lab host source snapshot; source-only archive, not the 26q3 integration branch",
+  "source_host": "chen@lab",
+  "source_path": "/home/chen/matter-renode-work/connectedhomeip",
+  "base_commit": "8bb8a4ff3512f9d1e0fcdf5877e1ee2319ffd90d",
+  "lab_head": "97d097f7206b7b7bef41c0fe9e3b629752a3d3f7",
+  "head_delta": "Only PairingCommand.h differs from base; two additional working-tree changes captured",
+  "patches": {
+    "lab-sdk-working.patch": "79ba68094537676cf211157ef164f0530942058fce37f00b332b34e7518b763b",
+    "lab-sdk-pase-only.patch": "f2cd3df9adb64c6e7b581ed194db9447e7766c4db63268c8633ee241ee75f3b7"
+  },
+  "files": {
+    "src/ble/BLEEndPoint.cpp": {
+      "git_blob": "3ddf588300fa055c7fe82ff8aee791d04c913010",
+      "sha256": "a67afc64d1172461053333a4a2b24a51030258740440bd48a16155742b2e2f31"
+    },
+    "src/platform/Linux/BLEManagerImpl.cpp": {
+      "git_blob": "c9bb7ca0dd6fd9d798bc57576b9a9f96003b0d5c",
+      "sha256": "ab07c6c5152c53dccc2f4f6e366fcffa5612cb84769fb8e4afae7f491e2fe838"
+    },
+    "examples/chip-tool/commands/pairing/PairingCommand.h": {
+      "git_blob": "d12298647fdebd53057867f2e21260ef17ce1ad4",
+      "sha256": "85e5887a5ece195e627fe2671d5bc993f0d30e81fa662d3a21c67f5c987ef9aa"
+    }
+  }
+}

@@ -134,6 +134,7 @@ public:
             AddArgument("skip-commissioning-complete", 0, 1, &mSkipCommissioningComplete);
             AddArgument("setup-pin-code", 0, 134217727, &mSetupPINCode.emplace());
             AddArgument("discriminator", 0, 4096, &mDiscriminator.emplace());
+            AddArgument("pase-only", 0, 1, &mPaseOnly);
             break;
         case PairingMode::Nfc:
             AddArgument("skip-commissioning-complete", 0, 1, &mSkipCommissioningComplete);
